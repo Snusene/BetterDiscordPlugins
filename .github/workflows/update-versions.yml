@@ -1,0 +1,29 @@
+name: Update Version Badges
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.plugin.js'
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update version badges
+        run: |
+          KP_VERSION=$(grep -oP '@version \K[0-9.]+' KeywordPing/KeywordPing.plugin.js)
+          TP_VERSION=$(grep -oP '@version \K[0-9.]+' TwitchPreview/TwitchPreview.plugin.js)
+          PD_VERSION=$(grep -oP '@version \K[0-9.]+' PriorityDM/PriorityDM.plugin.js)
+
+          sed -i "s|\[keywordping-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[keywordping-version-badge\]: https://img.shields.io/badge/version-${KP_VERSION}-brightgreen|" README.md
+          sed -i "s|\[twitchpreview-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[twitchpreview-version-badge\]: https://img.shields.io/badge/version-${TP_VERSION}-brightgreen|" README.md
+          sed -i "s|\[prioritydm-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[prioritydm-version-badge\]: https://img.shields.io/badge/version-${PD_VERSION}-brightgreen|" README.md
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git diff --quiet README.md || (git add README.md && git commit -m "Update version badges" && git push)
