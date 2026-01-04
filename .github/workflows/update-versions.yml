@@ -20,10 +20,12 @@ jobs:
           KP_VERSION=$(grep -oP '@version \K[0-9.]+' KeywordPing/KeywordPing.plugin.js)
           TP_VERSION=$(grep -oP '@version \K[0-9.]+' TwitchPreview/TwitchPreview.plugin.js)
           PD_VERSION=$(grep -oP '@version \K[0-9.]+' PriorityDM/PriorityDM.plugin.js)
+          STL_VERSION=$(grep -oP '@version \K[0-9.]+' ScrollToLatest/ScrollToLatest.plugin.js)
 
           sed -i "s|\[keywordping-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[keywordping-version-badge\]: https://img.shields.io/badge/version-${KP_VERSION}-brightgreen|" README.md
           sed -i "s|\[twitchpreview-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[twitchpreview-version-badge\]: https://img.shields.io/badge/version-${TP_VERSION}-brightgreen|" README.md
           sed -i "s|\[prioritydm-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[prioritydm-version-badge\]: https://img.shields.io/badge/version-${PD_VERSION}-brightgreen|" README.md
+          sed -i "s|\[scrolltolatest-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[scrolltolatest-version-badge\]: https://img.shields.io/badge/version-${STL_VERSION}-brightgreen|" README.md
 
       - name: Commit changes
         run: |
