@@ -3,8 +3,9 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Get notified when messages match your keywords. Uses Discord's native notification system, so it looks and sounds just like a regular @mention.
- * @version 2.4.0
- * @source https://github.com/Snusene/KeywordPing
+ * @version 2.4.1
+ * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
+ * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/KeywordPing/KeywordPing.plugin.js
  */
 
 module.exports = class KeywordPing {

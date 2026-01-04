@@ -3,8 +3,9 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Always shows video preview for Twitch channel links with live status
- * @version 2.1.0
- * @source https://github.com/Snusene/TwitchPreview
+ * @version 2.1.1
+ * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/TwitchPreview
+ * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/TwitchPreview/TwitchPreview.plugin.js
  */
 
 module.exports = class TwitchPreview {

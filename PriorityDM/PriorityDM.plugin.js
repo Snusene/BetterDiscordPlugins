@@ -3,8 +3,9 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Bypass Do Not Disturb for DMs from specific people. Right click a user to add them.
- * @version 1.0.1
- * @source https://github.com/Snusene/PriorityDM
+ * @version 1.0.2
+ * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/PriorityDM
+ * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/PriorityDM/PriorityDM.plugin.js
  */
 
 module.exports = class PriorityDM {
