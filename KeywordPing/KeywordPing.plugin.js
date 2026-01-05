@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Get notified when messages match your keywords. Uses Discord's native notification system, so it looks and sounds just like a regular @mention.
- * @version 2.4.2
+ * @version 2.4.3
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/KeywordPing/KeywordPing.plugin.js
  */
@@ -22,37 +22,37 @@ module.exports = class KeywordPing {
             .kp-settings-panel { padding: 10px; }
             .kp-settings-group { margin-bottom: 20px; }
             .kp-category-content .kp-settings-group:last-child { margin-bottom: 0; }
-            .kp-settings-group-title { color: var(--header-secondary); font-size: 12px; font-weight: 700; text-transform: uppercase; display: inline; margin-right: 6px; }
+            .kp-settings-group-title { color: var(--primary-330); font-size: 12px; font-weight: 700; text-transform: uppercase; display: inline; margin-right: 6px; }
             .kp-settings-group-header { margin-bottom: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
             .kp-count { background: var(--brand-500); color: white; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; }
-            .kp-textarea { width: 100%; min-height: 120px; background: rgba(0,0,0,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 10px; color: var(--text-normal); font-family: inherit; font-size: 14px; resize: none; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; transition: border-color 0.15s ease; }
-            .kp-textarea:hover { border-color: var(--brand-500); scrollbar-width: thin; scrollbar-color: var(--scrollbar-thin-thumb) transparent; }
+            .kp-textarea { width: 100%; min-height: 120px; background: rgba(0,0,0,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 10px; color: var(--primary-230); font-family: inherit; font-size: 14px; resize: none; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; transition: border-color 0.15s ease; }
+            .kp-textarea:hover { border-color: var(--brand-500); scrollbar-width: thin; scrollbar-color: var(--primary-400) transparent; }
             .kp-textarea:focus { border-color: var(--brand-500); outline: none; }
             .kp-textarea::-webkit-scrollbar { width: 8px; background: transparent; }
             .kp-textarea::-webkit-scrollbar-track { background: transparent; }
             .kp-textarea::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
-            .kp-textarea:hover::-webkit-scrollbar-thumb { background: var(--scrollbar-thin-thumb); }
-            .kp-textarea::placeholder { color: var(--text-muted); opacity: 0.4; }
-            .kp-hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
-            .kp-error { color: var(--text-danger); font-size: 12px; margin-top: 4px; }
+            .kp-textarea:hover::-webkit-scrollbar-thumb { background: var(--primary-400); }
+            .kp-textarea::placeholder { color: var(--primary-360); opacity: 0.4; }
+            .kp-hint { color: var(--primary-360); font-size: 12px; line-height: 1.5; }
+            .kp-error { color: var(--red-400); font-size: 12px; margin-top: 4px; }
             .kp-category { margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; overflow: hidden; }
             .kp-category-header { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(0,0,0,0.2); cursor: pointer; user-select: none; }
             .kp-category-header:hover { background: rgba(0,0,0,0.3); }
-            .kp-category-title { color: var(--header-primary); font-size: 14px; font-weight: 600; }
-            .kp-category-arrow { color: var(--text-muted); transition: transform 0.2s; }
+            .kp-category-title { color: var(--primary-230); font-size: 14px; font-weight: 600; }
+            .kp-category-arrow { color: var(--primary-360); transition: transform 0.2s; }
             .kp-category-arrow.open { transform: rotate(90deg); }
             .kp-category-content { padding: 12px; display: none; background: rgba(0,0,0,0.1); }
             .kp-category-content.open { display: block; }
-            .kp-server-list { max-height: 200px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--scrollbar-thin-thumb) transparent; }
+            .kp-server-list { max-height: 200px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--primary-400) transparent; }
             .kp-server-list::-webkit-scrollbar { width: 8px; background: transparent; }
             .kp-server-list::-webkit-scrollbar-track { background: transparent; }
-            .kp-server-list::-webkit-scrollbar-thumb { background: var(--scrollbar-thin-thumb); border-radius: 4px; }
+            .kp-server-list::-webkit-scrollbar-thumb { background: var(--primary-400); border-radius: 4px; }
             .kp-server-item { display: flex; align-items: center; padding: 8px; border-radius: 4px; gap: 10px; }
-            .kp-server-icon { width: 24px; height: 24px; border-radius: 50%; background: var(--background-secondary); flex-shrink: 0; object-fit: cover; }
-            .kp-server-icon-placeholder { width: 24px; height: 24px; border-radius: 50%; background: var(--background-secondary); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted); font-weight: 600; }
+            .kp-server-icon { width: 24px; height: 24px; border-radius: 50%; background: var(--primary-630); flex-shrink: 0; object-fit: cover; }
+            .kp-server-icon-placeholder { width: 24px; height: 24px; border-radius: 50%; background: var(--primary-630); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--primary-360); font-weight: 600; }
             .kp-server-item:hover { background: rgba(255,255,255,0.05); }
-            .kp-server-name { color: var(--text-normal); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            .kp-toggle { position: relative; width: 40px; height: 24px; background: var(--background-tertiary); border-radius: 12px; cursor: pointer; transition: background 0.2s; }
+            .kp-server-name { color: var(--primary-230); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .kp-toggle { position: relative; width: 40px; height: 24px; background: var(--primary-700); border-radius: 12px; cursor: pointer; transition: background 0.2s; }
             .kp-toggle.on { background: var(--brand-500); }
             .kp-toggle-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: left 0.2s; }
             .kp-toggle.on .kp-toggle-knob { left: 18px; }
@@ -109,211 +109,109 @@ module.exports = class KeywordPing {
     }
 
     getSettingsPanel() {
-        const panel = document.createElement("div");
-        panel.className = "kp-settings-panel";
+        const { React } = BdApi;
+        const plugin = this;
 
-        const keywordsSection = this.createTextAreaSetting(
-            "Keywords",
-            "One keyword per line",
-            this.settings.keywords.join("\n"),
-            (val) => {
-                this.settings.keywords = val.split("\n").filter(k => k.trim());
-                this.compileKeywords();
-                this.saveSettings();
-                this.updateCount(keywordsSection, this.settings.keywords.length);
-            },
-            true,
-            ["hello", "/regex/i", "@username:keyword", "#channelid:keyword", "serverid:keyword"]
-        );
-        this.updateCount(keywordsSection, this.settings.keywords.length);
-        panel.appendChild(keywordsSection);
+        const SettingsPanel = () => {
+            const [keywords, setKeywords] = React.useState(plugin.settings.keywords.join("\n"));
+            const [vipUsers, setVipUsers] = React.useState(plugin.settings.whitelistedUsers.join("\n"));
+            const [guildSettings, setGuildSettings] = React.useState({ ...plugin.settings.guilds });
+            const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
-        const categories = [];
-        const advancedCategory = this.createCategory("Advanced", false, categories, [
-            this.createTextAreaSetting(
-                "VIP Users",
-                "Always notify for any message from these users",
-                this.settings.whitelistedUsers.join("\n"),
-                (val) => { this.settings.whitelistedUsers = val.split("\n").filter(k => k.trim()); this.saveSettings(); },
-                false,
-                ["username", "display name", "nickname", "user id"],
-                true
-            ),
-            this.createServerList()
-        ]);
-        panel.appendChild(advancedCategory);
+            const keywordList = keywords.split("\n").filter(k => k.trim());
+            const keywordCount = keywordList.length;
+            const invalidPatterns = keywordList.filter(k => !plugin.isValidPattern(k));
 
-        return panel;
-    }
+            const handleKeywordsChange = (e) => {
+                const val = e.target.value;
+                setKeywords(val);
+                plugin.settings.keywords = val.split("\n").filter(k => k.trim());
+                plugin.compileKeywords();
+                plugin.saveSettings();
+            };
 
-    createCategory(title, openByDefault, allCategories, children) {
-        const category = document.createElement("div");
-        category.className = "kp-category";
+            const handleVipUsersChange = (e) => {
+                const val = e.target.value;
+                setVipUsers(val);
+                plugin.settings.whitelistedUsers = val.split("\n").filter(k => k.trim());
+                plugin.saveSettings();
+            };
 
-        const header = document.createElement("div");
-        header.className = "kp-category-header";
+            const handleGuildToggle = (guildId) => {
+                const currentEnabled = guildSettings[guildId]?.enabled !== false;
+                const newSettings = { ...guildSettings, [guildId]: { ...guildSettings[guildId], enabled: !currentEnabled } };
+                setGuildSettings(newSettings);
+                plugin.settings.guilds = newSettings;
+                plugin.saveSettings();
+            };
 
-        const titleEl = document.createElement("span");
-        titleEl.className = "kp-category-title";
-        titleEl.textContent = title;
-        header.appendChild(titleEl);
+            const guilds = plugin.GuildStore?.getGuilds() || {};
+            const SortedGuildStore = BdApi.Webpack.getByKeys("getFlattenedGuildIds");
+            const guildOrder = SortedGuildStore?.getFlattenedGuildIds?.() || [];
+            const sortedGuilds = guildOrder.map(id => guilds[id]).filter(Boolean);
 
-        const arrow = document.createElement("span");
-        arrow.className = "kp-category-arrow" + (openByDefault ? " open" : "");
-        arrow.textContent = "▶";
-        header.appendChild(arrow);
-
-        category.appendChild(header);
-
-        const content = document.createElement("div");
-        content.className = "kp-category-content" + (openByDefault ? " open" : "");
-        children.forEach(child => content.appendChild(child));
-        category.appendChild(content);
-
-        allCategories.push({ arrow, content });
-
-        header.onclick = () => {
-            const isOpening = !content.classList.contains("open");
-            if (isOpening) {
-                allCategories.forEach(cat => {
-                    cat.arrow.classList.remove("open");
-                    cat.content.classList.remove("open");
-                });
-            }
-            arrow.classList.toggle("open");
-            content.classList.toggle("open");
+            const e = React.createElement;
+            return e("div", { className: "kp-settings-panel" },
+                // Keywords section
+                e("div", { className: "kp-settings-group" },
+                    e("div", { className: "kp-settings-group-header" },
+                        e("span", { className: "kp-settings-group-title" }, "Keywords"),
+                        e("span", { className: "kp-hint" }, "One keyword per line"),
+                        keywordCount > 0 && e("span", { className: "kp-count" }, keywordCount)
+                    ),
+                    e("textarea", {
+                        className: "kp-textarea",
+                        value: keywords,
+                        onChange: handleKeywordsChange,
+                        placeholder: "hello\n/regex/i\n@username:keyword\n#channelid:keyword\nserverid:keyword"
+                    }),
+                    invalidPatterns.length > 0 && e("div", { className: "kp-error" },
+                        "Invalid pattern: " + invalidPatterns.join(", ")
+                    )
+                ),
+                // Advanced category
+                e("div", { className: "kp-category" },
+                    e("div", { className: "kp-category-header", onClick: () => setAdvancedOpen(!advancedOpen) },
+                        e("span", { className: "kp-category-title" }, "Advanced"),
+                        e("span", { className: "kp-category-arrow" + (advancedOpen ? " open" : "") }, "▶")
+                    ),
+                    e("div", { className: "kp-category-content" + (advancedOpen ? " open" : "") },
+                        // VIP Users
+                        e("div", { className: "kp-settings-group" },
+                            e("div", { className: "kp-settings-group-header" },
+                                e("span", { className: "kp-settings-group-title" }, "VIP Users"),
+                                e("span", { className: "kp-hint" }, "Always notify for any message from these users")
+                            ),
+                            e("textarea", {
+                                className: "kp-textarea",
+                                style: { minHeight: "100px" },
+                                value: vipUsers,
+                                onChange: handleVipUsersChange,
+                                placeholder: "username\ndisplay name\nnickname\nuser id"
+                            })
+                        ),
+                        // Server list
+                        e("div", null,
+                            e("div", { className: "kp-hint", style: { marginBottom: "12px" } }, "Servers to listen for keywords"),
+                            e("div", { className: "kp-server-list" },
+                                sortedGuilds.map(guild => e("div", { key: guild.id, className: "kp-server-item" },
+                                    guild.icon
+                                        ? e("img", { className: "kp-server-icon", src: `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=32` })
+                                        : e("div", { className: "kp-server-icon-placeholder" }, guild.name.charAt(0).toUpperCase()),
+                                    e("span", { className: "kp-server-name" }, guild.name),
+                                    e("div", {
+                                        className: "kp-toggle" + (guildSettings[guild.id]?.enabled !== false ? " on" : ""),
+                                        onClick: () => handleGuildToggle(guild.id)
+                                    }, e("div", { className: "kp-toggle-knob" }))
+                                ))
+                            )
+                        )
+                    )
+                )
+            );
         };
 
-        return category;
-    }
-
-    createServerList() {
-        const container = document.createElement("div");
-
-        const hint = document.createElement("div");
-        hint.className = "kp-hint";
-        hint.textContent = "Servers to listen for keywords";
-        hint.style.marginBottom = "12px";
-        container.appendChild(hint);
-
-        const list = document.createElement("div");
-        list.className = "kp-server-list";
-
-        const guilds = this.GuildStore?.getGuilds() || {};
-        const SortedGuildStore = BdApi.Webpack.getByKeys("getFlattenedGuildIds");
-        const guildOrder = SortedGuildStore?.getFlattenedGuildIds?.() || [];
-        const sortedGuilds = guildOrder.map(id => guilds[id]).filter(Boolean);
-
-        for (const guild of sortedGuilds) {
-            const item = document.createElement("div");
-            item.className = "kp-server-item";
-
-            if (guild.icon) {
-                const icon = document.createElement("img");
-                icon.className = "kp-server-icon";
-                icon.src = `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=32`;
-                item.appendChild(icon);
-            } else {
-                const placeholder = document.createElement("div");
-                placeholder.className = "kp-server-icon-placeholder";
-                placeholder.textContent = guild.name.charAt(0).toUpperCase();
-                item.appendChild(placeholder);
-            }
-
-            const name = document.createElement("span");
-            name.className = "kp-server-name";
-            name.textContent = guild.name;
-            item.appendChild(name);
-
-            const enabled = this.settings.guilds[guild.id]?.enabled !== false;
-            const toggle = this.createToggle(enabled, (val) => {
-                if (!this.settings.guilds[guild.id]) this.settings.guilds[guild.id] = {};
-                this.settings.guilds[guild.id].enabled = val;
-                this.saveSettings();
-            });
-            item.appendChild(toggle);
-
-            list.appendChild(item);
-        }
-
-        container.appendChild(list);
-        return container;
-    }
-
-    createToggle(initialValue, onChange) {
-        const toggle = document.createElement("div");
-        toggle.className = "kp-toggle" + (initialValue ? " on" : "");
-
-        const knob = document.createElement("div");
-        knob.className = "kp-toggle-knob";
-        toggle.appendChild(knob);
-
-        toggle.onclick = () => {
-            const isOn = toggle.classList.toggle("on");
-            onChange(isOn);
-        };
-
-        return toggle;
-    }
-
-    updateCount(section, count) {
-        let countEl = section.querySelector(".kp-count");
-        if (!countEl) {
-            countEl = document.createElement("span");
-            countEl.className = "kp-count";
-            section.querySelector(".kp-settings-group-header").appendChild(countEl);
-        }
-        countEl.textContent = count;
-        countEl.style.display = count > 0 ? "inline" : "none";
-    }
-
-    createTextAreaSetting(title, hint, value, onChange, validate = false, examples = null, small = false) {
-        const group = document.createElement("div");
-        group.className = "kp-settings-group";
-
-        const header = document.createElement("div");
-        header.className = "kp-settings-group-header";
-
-        const titleEl = document.createElement("span");
-        titleEl.className = "kp-settings-group-title";
-        titleEl.textContent = title;
-        header.appendChild(titleEl);
-
-        const hintEl = document.createElement("span");
-        hintEl.className = "kp-hint";
-        hintEl.textContent = hint;
-        header.appendChild(hintEl);
-
-        group.appendChild(header);
-
-        const textarea = document.createElement("textarea");
-        textarea.className = "kp-textarea";
-        if (small) textarea.style.minHeight = "100px";
-        textarea.value = value;
-        textarea.placeholder = examples ? examples.join("\n") : `Enter ${title.toLowerCase()}...`;
-        group.appendChild(textarea);
-
-        const errorEl = document.createElement("div");
-        errorEl.className = "kp-error";
-        errorEl.style.display = "none";
-        group.appendChild(errorEl);
-
-        const updateValidation = () => {
-            if (!validate) return;
-            const invalid = textarea.value.split("\n").filter(k => k.trim() && !this.isValidPattern(k));
-            if (invalid.length) {
-                errorEl.textContent = `Invalid pattern: ${invalid.join(", ")}`;
-                errorEl.style.display = "block";
-            } else {
-                errorEl.style.display = "none";
-            }
-        };
-
-        textarea.addEventListener("change", () => { onChange(textarea.value); updateValidation(); });
-        textarea.addEventListener("input", updateValidation);
-        updateValidation();
-
-        return group;
+        return BdApi.React.createElement(SettingsPanel);
     }
 
     isValidPattern(keyword) {
