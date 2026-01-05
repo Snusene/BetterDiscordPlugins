@@ -67,7 +67,7 @@ module.exports = class KeywordPing {
         this.GuildStore = BdApi.Webpack.getStore("GuildStore");
         this.GuildMemberStore = BdApi.Webpack.getStore("GuildMemberStore");
         this.currentUserId = this.UserStore?.getCurrentUser()?.id;
-        this.patchDispatcher();
+        this.setupInterceptor();
     }
 
     stop() {
@@ -83,7 +83,7 @@ module.exports = class KeywordPing {
         this.compiledKeywords = [];
     }
 
-    patchDispatcher() {
+    setupInterceptor() {
         this.Dispatcher = BdApi.Webpack.getByKeys("dispatch", "subscribe");
         if (!this.Dispatcher) return;
 
