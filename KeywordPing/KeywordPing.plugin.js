@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Get notified when messages match your keywords. Uses Discord's native notification system, so it looks and sounds just like a regular @mention.
- * @version 2.4.3
+ * @version 2.4.4
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/KeywordPing/KeywordPing.plugin.js
  */
@@ -13,7 +13,6 @@ module.exports = class KeywordPing {
         this.settings = null;
         this.compiledKeywords = [];
         this.currentUserId = null;
-        this.Dispatcher = null;
         this.UserStore = null;
         this.ChannelStore = null;
         this.GuildStore = null;
@@ -68,14 +67,12 @@ module.exports = class KeywordPing {
         this.GuildStore = BdApi.Webpack.getStore("GuildStore");
         this.GuildMemberStore = BdApi.Webpack.getStore("GuildMemberStore");
         this.currentUserId = this.UserStore?.getCurrentUser()?.id;
-        this.Dispatcher = BdApi.Webpack.getByKeys("dispatch", "subscribe");
-        this.onMessageCreate = this.onMessageCreate.bind(this);
-        this.Dispatcher?.subscribe("MESSAGE_CREATE", this.onMessageCreate);
+        this.patchDispatcher();
     }
 
     stop() {
         BdApi.DOM.removeStyle("KeywordPing");
-        this.Dispatcher?.unsubscribe("MESSAGE_CREATE", this.onMessageCreate);
+        this.active = false;
         this.saveSettings();
         this.Dispatcher = null;
         this.UserStore = null;
@@ -84,6 +81,20 @@ module.exports = class KeywordPing {
         this.GuildMemberStore = null;
         this.currentUserId = null;
         this.compiledKeywords = [];
+    }
+
+    patchDispatcher() {
+        this.Dispatcher = BdApi.Webpack.getByKeys("dispatch", "subscribe");
+        if (!this.Dispatcher) return;
+
+        this.active = true;
+        this.Dispatcher.addInterceptor((event) => {
+            if (!this.active) return false;
+            if (event.type === "MESSAGE_CREATE") {
+                this.handleMessage(event);
+            }
+            return false;
+        });
     }
 
     loadSettings() {
@@ -228,10 +239,6 @@ module.exports = class KeywordPing {
             catch { return false; }
         }
         return true;
-    }
-
-    onMessageCreate(event) {
-        this.handleMessage(event);
     }
 
     handleMessage(event) {
