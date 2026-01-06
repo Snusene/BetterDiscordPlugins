@@ -2,8 +2,8 @@
  * @name TwitchPreview
  * @author Snues
  * @authorId 98862725609816064
- * @description Always shows video preview for Twitch channel links with live status
- * @version 2.1.1
+ * @description Improved previews for Twitch channel links.
+ * @version 2.1.2
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/TwitchPreview
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/TwitchPreview/TwitchPreview.plugin.js
  */
@@ -29,20 +29,22 @@ module.exports = class TwitchPreview {
     get css() {
         return `
             .twitch-embed {
+                width: 100%;
                 max-width: 432px;
                 border-left: 4px solid #9146ff;
                 border-radius: 4px;
                 padding: 8px 16px 16px 12px;
                 display: flex;
                 flex-direction: column;
+                box-sizing: border-box;
             }
             .twitch-embed-provider {
-                color: var(--text-muted);
+                color: var(--primary-360);
                 font-size: 12px;
                 font-weight: 400;
             }
             .twitch-embed .twitch-combined-title {
-                color: var(--text-link);
+                color: var(--text-link); /* still works */
                 font-size: 16px;
                 font-weight: 600;
                 line-height: 1.25;
@@ -60,11 +62,16 @@ module.exports = class TwitchPreview {
                 border-radius: 4px;
                 overflow: hidden;
                 background: #18181b;
-                margin-top: 8px;
+                margin-top: 16px;
             }
-            .twitch-embed .twitch-video-wrapper img {
+            .twitch-embed .twitch-video-wrapper img,
+            .twitch-embed .twitch-video-wrapper iframe {
+                position: absolute;
+                top: 0;
+                left: 0;
                 width: 100%;
                 height: 100%;
+                border: none;
                 object-fit: cover;
             }
             .twitch-embed .twitch-live-badge {
@@ -77,11 +84,7 @@ module.exports = class TwitchPreview {
                 border-radius: 3px;
                 font-size: 12px;
                 font-weight: 600;
-            }
-            .twitch-embed .twitch-video-wrapper iframe {
-                width: 100%;
-                height: 100%;
-                border: none;
+                z-index: 1;
             }
         `;
     }
@@ -234,7 +237,7 @@ module.exports = class TwitchPreview {
                 method: 'POST',
                 headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    query: `query { user(login: "${channel}") { displayName stream { id title } offlineImageURL bannerImageURL profileImageURL(width: 600) } }`
+                    query: `query { user(login: "${channel}") { displayName stream { title } offlineImageURL bannerImageURL profileImageURL(width: 600) } }`
                 })
             });
             const data = await response.json();
