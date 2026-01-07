@@ -8,7 +8,7 @@
 Get notified when messages match your keywords. Uses Discord's native notification system.
 
 ## [TwitchPreview](./TwitchPreview) ![Version][twitchpreview-version-badge]
-Consistent Twitch previews that don't depend on Discord's unreliable embed system.
+Every Twitch channel link gets a proper preview with live status, thumbnail, and Twitch styling.
 
 ## [PriorityDM](./PriorityDM) ![Version][prioritydm-version-badge]
 Bypass Do Not Disturb for DMs from specific people.
