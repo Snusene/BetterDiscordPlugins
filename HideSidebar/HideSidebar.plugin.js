@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
- * @version 1.3.0
+ * @version 1.3.1
  * @website https://github.com/Snusene/BetterDiscordPlugins
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/HideSidebar
  */
@@ -82,7 +82,9 @@ module.exports = class HideSidebar {
           el.closest('[class*="popout"]') ||
           el.closest('[class*="menu"]') ||
           el.closest('[class*="streamPreview"]') ||
-          el.closest('[class*="animator"]'),
+          el.closest('[class*="animator"]') ||
+          el.closest('[class*="ResizeHandle"]') ||
+          el.closest('[class*="dragging"]'),
       );
       const hovered =
         sidebar?.matches(":hover") || guilds?.matches(":hover") || onPopout;
@@ -96,8 +98,7 @@ module.exports = class HideSidebar {
   }
 
   onMouseMove(e) {
-    const x = e.clientX;
-    if (x <= 10 && !this.expanded) {
+    if (e.clientX <= 10 && !this.expanded) {
       this.expand();
     }
   }
