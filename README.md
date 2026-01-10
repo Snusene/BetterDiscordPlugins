@@ -16,7 +16,11 @@ Bypass Do Not Disturb for DMs from specific people.
 ## [ScrollToLatest](./ScrollToLatest) ![Version][scrolltolatest-version-badge]
 Auto marks channels as read when you enter them so that it scrolls to the last message.
 
+## [HideSidebar](./HideSidebar) ![Version][hidesidebar-version-badge]
+Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
+
 [keywordping-version-badge]: https://img.shields.io/badge/version-2.4.5-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-2.1.2-brightgreen
 [prioritydm-version-badge]: https://img.shields.io/badge/version-1.0.2-brightgreen
 [scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.0-brightgreen
+[hidesidebar-version-badge]: https://img.shields.io/badge/version-1.0.0-brightgreen
