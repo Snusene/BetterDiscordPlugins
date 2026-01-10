@@ -23,4 +23,4 @@ Hides the sidebar when not in use. Move your mouse to the left edge to reveal it
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-2.1.2-brightgreen
 [prioritydm-version-badge]: https://img.shields.io/badge/version-1.0.2-brightgreen
 [scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.0-brightgreen
-[hidesidebar-version-badge]: https://img.shields.io/badge/version-1.2.0-brightgreen
+[hidesidebar-version-badge]: https://img.shields.io/badge/version-1.3.2-brightgreen
