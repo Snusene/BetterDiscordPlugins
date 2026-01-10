@@ -5,7 +5,7 @@
 <br>
 
 ## [KeywordPing](./KeywordPing) ![Version][keywordping-version-badge]
-Get notified when messages match your keywords. Uses Discord's native notification system.
+Get notified when messages match your keywords.
 
 ## [TwitchPreview](./TwitchPreview) ![Version][twitchpreview-version-badge]
 Every Twitch channel link gets a proper preview with live status, thumbnail, and Twitch styling.
