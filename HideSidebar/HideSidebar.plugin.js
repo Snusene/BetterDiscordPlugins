@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
- * @version 1.0.0
+ * @version 1.2.0
  * @website https://github.com/Snusene/BetterDiscordPlugins
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/HideSidebar
  */
@@ -76,11 +76,13 @@ module.exports = class HideSidebar {
       if (!this.expanded) return;
       if (Date.now() - this.expandTime < 300) return;
       const sidebar = document.querySelector(`.${this.sidebarClass}`);
+      const sidebarRight = sidebar?.getBoundingClientRect().right || 350;
+      const popout = document.querySelector(
+        '[class*="layer-"]:hover, [class*="popout"]:hover',
+      );
       const hovered =
         sidebar?.matches(":hover") ||
-        document.querySelector(
-          '[class*="layer-"]:hover, [class*="popout"]:hover',
-        );
+        (popout && popout.getBoundingClientRect().left < sidebarRight + 50);
       if (hovered) {
         this.unhoverTime = 0;
       } else {
@@ -93,8 +95,11 @@ module.exports = class HideSidebar {
   onMouseMove(e) {
     const x = e.clientX;
     const el = document.elementFromPoint(x, e.clientY);
-    const inSidebar = x <= 10 || (this.expanded && x <= 312);
-    const inPopout = el?.closest('[class*="layer-"], [class*="popout"]');
+    const sidebar = document.querySelector(`.${this.sidebarClass}`);
+    const sidebarRight = sidebar?.getBoundingClientRect().right || 312;
+    const inSidebar = x <= 10 || (this.expanded && x <= sidebarRight);
+    const popout = el?.closest('[class*="layer-"], [class*="popout"]');
+    const inPopout = popout && popout.getBoundingClientRect().left < sidebarRight + 50;
 
     if (inSidebar || inPopout) {
       clearTimeout(this.collapseTimeout);
