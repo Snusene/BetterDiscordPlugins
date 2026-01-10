@@ -3,21 +3,23 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Get notified when messages match your keywords. Uses Discord's native notification system, so it looks and sounds just like a regular @mention.
- * @version 2.4.4
+ * @version 2.4.5
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/KeywordPing/KeywordPing.plugin.js
  */
 
 module.exports = class KeywordPing {
-    constructor() {
-        this.settings = null;
-        this.compiledKeywords = [];
-        this.currentUserId = null;
-        this.UserStore = null;
-        this.ChannelStore = null;
-        this.GuildStore = null;
-        this.GuildMemberStore = null;
-        this.css = `
+  constructor() {
+    this.settings = null;
+    this.compiledKeywords = [];
+    this.currentUserId = null;
+    this.UserStore = null;
+    this.ChannelStore = null;
+    this.GuildStore = null;
+    this.GuildMemberStore = null;
+    this.Dispatcher = null;
+    this.interceptor = null;
+    this.css = `
             .kp-settings-panel { padding: 10px; }
             .kp-settings-group { margin-bottom: 20px; }
             .kp-category-content .kp-settings-group:last-child { margin-bottom: 0; }
@@ -56,276 +58,389 @@ module.exports = class KeywordPing {
             .kp-toggle-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: left 0.2s; }
             .kp-toggle.on .kp-toggle-knob { left: 18px; }
         `;
+  }
+
+  start() {
+    BdApi.DOM.addStyle("KeywordPing", this.css);
+    this.loadSettings();
+    this.compileKeywords();
+    this.UserStore = BdApi.Webpack.getStore("UserStore");
+    this.ChannelStore = BdApi.Webpack.getStore("ChannelStore");
+    this.GuildStore = BdApi.Webpack.getStore("GuildStore");
+    this.GuildMemberStore = BdApi.Webpack.getStore("GuildMemberStore");
+    this.currentUserId = this.UserStore?.getCurrentUser()?.id;
+    this.setupInterceptor();
+  }
+
+  stop() {
+    BdApi.DOM.removeStyle("KeywordPing");
+    this.saveSettings();
+
+    if (this.Dispatcher && this.interceptor) {
+      const idx = this.Dispatcher._interceptors?.indexOf(this.interceptor);
+      if (idx > -1) this.Dispatcher._interceptors.splice(idx, 1);
     }
 
-    start() {
-        BdApi.DOM.addStyle("KeywordPing", this.css);
-        this.loadSettings();
-        this.compileKeywords();
-        this.UserStore = BdApi.Webpack.getStore("UserStore");
-        this.ChannelStore = BdApi.Webpack.getStore("ChannelStore");
-        this.GuildStore = BdApi.Webpack.getStore("GuildStore");
-        this.GuildMemberStore = BdApi.Webpack.getStore("GuildMemberStore");
-        this.currentUserId = this.UserStore?.getCurrentUser()?.id;
-        this.setupInterceptor();
+    this.interceptor = null;
+    this.Dispatcher = null;
+    this.UserStore = null;
+    this.ChannelStore = null;
+    this.GuildStore = null;
+    this.GuildMemberStore = null;
+    this.currentUserId = null;
+    this.compiledKeywords = [];
+  }
+
+  setupInterceptor() {
+    this.Dispatcher = BdApi.Webpack.getByKeys("dispatch", "subscribe");
+    if (!this.Dispatcher) return;
+
+    this.interceptor = (event) => {
+      if (event.type === "MESSAGE_CREATE") {
+        this.handleMessage(event);
+      }
+      return false;
+    };
+    this.Dispatcher.addInterceptor(this.interceptor);
+  }
+
+  loadSettings() {
+    const saved = BdApi.Data.load("KeywordPing", "settings") || {};
+    this.settings = {
+      keywords: saved.keywords || [],
+      whitelistedUsers: saved.whitelistedUsers || [],
+      guilds: saved.guilds || {},
+    };
+  }
+
+  saveSettings() {
+    BdApi.Data.save("KeywordPing", "settings", this.settings);
+  }
+
+  compileKeywords() {
+    this.compiledKeywords = [];
+    for (const keyword of this.settings.keywords) {
+      if (!keyword.trim()) continue;
+      const result = this.parseKeyword(keyword);
+      if (result) this.compiledKeywords.push(result);
     }
+  }
 
-    stop() {
-        BdApi.DOM.removeStyle("KeywordPing");
-        this.active = false;
-        this.saveSettings();
-        this.Dispatcher = null;
-        this.UserStore = null;
-        this.ChannelStore = null;
-        this.GuildStore = null;
-        this.GuildMemberStore = null;
-        this.currentUserId = null;
-        this.compiledKeywords = [];
-    }
+  getSettingsPanel() {
+    const { React } = BdApi;
+    const plugin = this;
 
-    setupInterceptor() {
-        this.Dispatcher = BdApi.Webpack.getByKeys("dispatch", "subscribe");
-        if (!this.Dispatcher) return;
+    const SettingsPanel = () => {
+      const [keywords, setKeywords] = React.useState(
+        plugin.settings.keywords.join("\n"),
+      );
+      const [vipUsers, setVipUsers] = React.useState(
+        plugin.settings.whitelistedUsers.join("\n"),
+      );
+      const [guildSettings, setGuildSettings] = React.useState({
+        ...plugin.settings.guilds,
+      });
+      const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
-        this.active = true;
-        this.Dispatcher.addInterceptor((event) => {
-            if (!this.active) return false;
-            if (event.type === "MESSAGE_CREATE") {
-                this.handleMessage(event);
-            }
-            return false;
-        });
-    }
+      const keywordList = keywords.split("\n").filter((k) => k.trim());
+      const keywordCount = keywordList.length;
+      const invalidPatterns = keywordList.filter(
+        (k) => !plugin.isValidPattern(k),
+      );
 
-    loadSettings() {
-        const saved = BdApi.Data.load("KeywordPing", "settings") || {};
-        this.settings = {
-            keywords: saved.keywords || [],
-            whitelistedUsers: saved.whitelistedUsers || [],
-            guilds: saved.guilds || {}
+      const handleKeywordsChange = (e) => {
+        const val = e.target.value;
+        setKeywords(val);
+        plugin.settings.keywords = val.split("\n").filter((k) => k.trim());
+        plugin.compileKeywords();
+        plugin.saveSettings();
+      };
+
+      const handleVipUsersChange = (e) => {
+        const val = e.target.value;
+        setVipUsers(val);
+        plugin.settings.whitelistedUsers = val
+          .split("\n")
+          .filter((k) => k.trim());
+        plugin.saveSettings();
+      };
+
+      const handleGuildToggle = (guildId) => {
+        const currentEnabled = guildSettings[guildId]?.enabled !== false;
+        const newSettings = {
+          ...guildSettings,
+          [guildId]: { ...guildSettings[guildId], enabled: !currentEnabled },
         };
-    }
+        setGuildSettings(newSettings);
+        plugin.settings.guilds = newSettings;
+        plugin.saveSettings();
+      };
 
-    saveSettings() {
-        BdApi.Data.save("KeywordPing", "settings", this.settings);
-    }
+      const guilds = plugin.GuildStore?.getGuilds() || {};
+      const SortedGuildStore = BdApi.Webpack.getStore("SortedGuildStore");
+      const guildOrder = SortedGuildStore?.getFlattenedGuildIds?.() || [];
+      const sortedGuilds = guildOrder.map((id) => guilds[id]).filter(Boolean);
 
-    compileKeywords() {
-        this.compiledKeywords = [];
-        for (const keyword of this.settings.keywords) {
-            if (!keyword.trim()) continue;
-            const result = this.parseKeyword(keyword);
-            if (result) this.compiledKeywords.push(result);
-        }
-    }
-
-    getSettingsPanel() {
-        const { React } = BdApi;
-        const plugin = this;
-
-        const SettingsPanel = () => {
-            const [keywords, setKeywords] = React.useState(plugin.settings.keywords.join("\n"));
-            const [vipUsers, setVipUsers] = React.useState(plugin.settings.whitelistedUsers.join("\n"));
-            const [guildSettings, setGuildSettings] = React.useState({ ...plugin.settings.guilds });
-            const [advancedOpen, setAdvancedOpen] = React.useState(false);
-
-            const keywordList = keywords.split("\n").filter(k => k.trim());
-            const keywordCount = keywordList.length;
-            const invalidPatterns = keywordList.filter(k => !plugin.isValidPattern(k));
-
-            const handleKeywordsChange = (e) => {
-                const val = e.target.value;
-                setKeywords(val);
-                plugin.settings.keywords = val.split("\n").filter(k => k.trim());
-                plugin.compileKeywords();
-                plugin.saveSettings();
-            };
-
-            const handleVipUsersChange = (e) => {
-                const val = e.target.value;
-                setVipUsers(val);
-                plugin.settings.whitelistedUsers = val.split("\n").filter(k => k.trim());
-                plugin.saveSettings();
-            };
-
-            const handleGuildToggle = (guildId) => {
-                const currentEnabled = guildSettings[guildId]?.enabled !== false;
-                const newSettings = { ...guildSettings, [guildId]: { ...guildSettings[guildId], enabled: !currentEnabled } };
-                setGuildSettings(newSettings);
-                plugin.settings.guilds = newSettings;
-                plugin.saveSettings();
-            };
-
-            const guilds = plugin.GuildStore?.getGuilds() || {};
-            const SortedGuildStore = BdApi.Webpack.getByKeys("getFlattenedGuildIds");
-            const guildOrder = SortedGuildStore?.getFlattenedGuildIds?.() || [];
-            const sortedGuilds = guildOrder.map(id => guilds[id]).filter(Boolean);
-
-            const e = React.createElement;
-            return e("div", { className: "kp-settings-panel" },
-                // Keywords section
-                e("div", { className: "kp-settings-group" },
-                    e("div", { className: "kp-settings-group-header" },
-                        e("span", { className: "kp-settings-group-title" }, "Keywords"),
-                        e("span", { className: "kp-hint" }, "One keyword per line"),
-                        keywordCount > 0 && e("span", { className: "kp-count" }, keywordCount)
-                    ),
-                    e("textarea", {
-                        className: "kp-textarea",
-                        value: keywords,
-                        onChange: handleKeywordsChange,
-                        placeholder: "hello\n/regex/i\n@username:keyword\n#channelid:keyword\nserverid:keyword"
-                    }),
-                    invalidPatterns.length > 0 && e("div", { className: "kp-error" },
-                        "Invalid pattern: " + invalidPatterns.join(", ")
-                    )
+      const e = React.createElement;
+      return e(
+        "div",
+        { className: "kp-settings-panel" },
+        e(
+          "div",
+          { className: "kp-settings-group" },
+          e(
+            "div",
+            { className: "kp-settings-group-header" },
+            e("span", { className: "kp-settings-group-title" }, "Keywords"),
+            e("span", { className: "kp-hint" }, "One keyword per line"),
+            keywordCount > 0 &&
+              e("span", { className: "kp-count" }, keywordCount),
+          ),
+          e("textarea", {
+            className: "kp-textarea",
+            value: keywords,
+            onChange: handleKeywordsChange,
+            placeholder:
+              "hello\n/regex/i\n@username:keyword\n#channelid:keyword\nserverid:keyword",
+          }),
+          invalidPatterns.length > 0 &&
+            e(
+              "div",
+              { className: "kp-error" },
+              "Invalid pattern: " + invalidPatterns.join(", "),
+            ),
+        ),
+        e(
+          "div",
+          { className: "kp-category" },
+          e(
+            "div",
+            {
+              className: "kp-category-header",
+              onClick: () => setAdvancedOpen(!advancedOpen),
+            },
+            e("span", { className: "kp-category-title" }, "Advanced"),
+            e(
+              "span",
+              {
+                className: "kp-category-arrow" + (advancedOpen ? " open" : ""),
+              },
+              "▶",
+            ),
+          ),
+          e(
+            "div",
+            {
+              className: "kp-category-content" + (advancedOpen ? " open" : ""),
+            },
+            e(
+              "div",
+              { className: "kp-settings-group" },
+              e(
+                "div",
+                { className: "kp-settings-group-header" },
+                e(
+                  "span",
+                  { className: "kp-settings-group-title" },
+                  "VIP Users",
                 ),
-                // Advanced category
-                e("div", { className: "kp-category" },
-                    e("div", { className: "kp-category-header", onClick: () => setAdvancedOpen(!advancedOpen) },
-                        e("span", { className: "kp-category-title" }, "Advanced"),
-                        e("span", { className: "kp-category-arrow" + (advancedOpen ? " open" : "") }, "▶")
-                    ),
-                    e("div", { className: "kp-category-content" + (advancedOpen ? " open" : "") },
-                        // VIP Users
-                        e("div", { className: "kp-settings-group" },
-                            e("div", { className: "kp-settings-group-header" },
-                                e("span", { className: "kp-settings-group-title" }, "VIP Users"),
-                                e("span", { className: "kp-hint" }, "Always notify for any message from these users")
-                            ),
-                            e("textarea", {
-                                className: "kp-textarea",
-                                style: { minHeight: "100px" },
-                                value: vipUsers,
-                                onChange: handleVipUsersChange,
-                                placeholder: "username\ndisplay name\nnickname\nuser id"
-                            })
+                e(
+                  "span",
+                  { className: "kp-hint" },
+                  "Always notify for any message from these users",
+                ),
+              ),
+              e("textarea", {
+                className: "kp-textarea",
+                style: { minHeight: "100px" },
+                value: vipUsers,
+                onChange: handleVipUsersChange,
+                placeholder: "username\ndisplay name\nnickname\nuser id",
+              }),
+            ),
+            e(
+              "div",
+              null,
+              e(
+                "div",
+                { className: "kp-hint", style: { marginBottom: "12px" } },
+                "Servers to listen for keywords",
+              ),
+              e(
+                "div",
+                { className: "kp-server-list" },
+                sortedGuilds.map((guild) =>
+                  e(
+                    "div",
+                    { key: guild.id, className: "kp-server-item" },
+                    guild.icon
+                      ? e("img", {
+                          className: "kp-server-icon",
+                          src: `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=32`,
+                        })
+                      : e(
+                          "div",
+                          { className: "kp-server-icon-placeholder" },
+                          guild.name.charAt(0).toUpperCase(),
                         ),
-                        // Server list
-                        e("div", null,
-                            e("div", { className: "kp-hint", style: { marginBottom: "12px" } }, "Servers to listen for keywords"),
-                            e("div", { className: "kp-server-list" },
-                                sortedGuilds.map(guild => e("div", { key: guild.id, className: "kp-server-item" },
-                                    guild.icon
-                                        ? e("img", { className: "kp-server-icon", src: `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=32` })
-                                        : e("div", { className: "kp-server-icon-placeholder" }, guild.name.charAt(0).toUpperCase()),
-                                    e("span", { className: "kp-server-name" }, guild.name),
-                                    e("div", {
-                                        className: "kp-toggle" + (guildSettings[guild.id]?.enabled !== false ? " on" : ""),
-                                        onClick: () => handleGuildToggle(guild.id)
-                                    }, e("div", { className: "kp-toggle-knob" }))
-                                ))
-                            )
-                        )
-                    )
-                )
-            );
-        };
+                    e("span", { className: "kp-server-name" }, guild.name),
+                    e(
+                      "div",
+                      {
+                        className:
+                          "kp-toggle" +
+                          (guildSettings[guild.id]?.enabled !== false
+                            ? " on"
+                            : ""),
+                        onClick: () => handleGuildToggle(guild.id),
+                      },
+                      e("div", { className: "kp-toggle-knob" }),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    };
 
-        return BdApi.React.createElement(SettingsPanel);
+    return BdApi.React.createElement(SettingsPanel);
+  }
+
+  isValidPattern(keyword) {
+    let pattern = keyword;
+    const userFilterMatch = /^@([^:]+):(.+)$/.exec(keyword);
+    if (userFilterMatch) pattern = userFilterMatch[2];
+    else {
+      const idFilterMatch = /^(#?)(\d+):(.+)$/.exec(keyword);
+      if (idFilterMatch) pattern = idFilterMatch[3];
     }
-
-    isValidPattern(keyword) {
-        let pattern = keyword;
-        const userFilterMatch = /^@([^:]+):(.+)$/.exec(keyword);
-        if (userFilterMatch) pattern = userFilterMatch[2];
-        else {
-            const idFilterMatch = /^(#?)(\d+):(.+)$/.exec(keyword);
-            if (idFilterMatch) pattern = idFilterMatch[3];
-        }
-        const regexMatch = /^\/(.+)\/([gimsuy]*)$/.exec(pattern);
-        if (regexMatch) {
-            try { new RegExp(regexMatch[1], regexMatch[2]); return true; }
-            catch { return false; }
-        }
+    const regexMatch = /^\/(.+)\/([gimsuy]*)$/.exec(pattern);
+    if (regexMatch) {
+      try {
+        new RegExp(regexMatch[1], regexMatch[2]);
         return true;
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  handleMessage(event) {
+    const { message } = event;
+    if (!message?.author || (!message.content && !message.embeds?.length))
+      return;
+    if (event.optimistic) return;
+
+    if (!this.currentUserId) {
+      this.currentUserId = this.UserStore?.getCurrentUser()?.id;
+      if (!this.currentUserId) return;
     }
 
-    handleMessage(event) {
-        const { message } = event;
-        if (!message?.author || (!message.content && !message.embeds?.length)) return;
-        if (event.optimistic) return;
+    const channel = this.ChannelStore?.getChannel(message.channel_id);
+    if (!channel?.guild_id) return;
+    if (!message.guild_id) message.guild_id = channel.guild_id;
 
-        if (!this.currentUserId) {
-            this.currentUserId = this.UserStore?.getCurrentUser()?.id;
-            if (!this.currentUserId) return;
+    if (message.author.id === this.currentUserId) return;
+    if (message.author.bot) return;
+
+    const guildSettings = this.settings.guilds[channel.guild_id];
+    if (guildSettings?.enabled === false) return;
+
+    let matched = this.matchesUser(
+      this.settings.whitelistedUsers,
+      message.author,
+      channel.guild_id,
+    );
+    if (!matched) {
+      for (const compiled of this.compiledKeywords) {
+        if (compiled.filter && !this.passesFilter(compiled.filter, message))
+          continue;
+        if (
+          compiled.regex.test(message.content || "") ||
+          message.embeds?.some((e) => compiled.regex.test(JSON.stringify(e)))
+        ) {
+          matched = true;
+          break;
         }
-
-        const channel = this.ChannelStore?.getChannel(message.channel_id);
-        if (!channel?.guild_id) return;
-        if (!message.guild_id) message.guild_id = channel.guild_id;
-
-        if (message.author.id === this.currentUserId) return;
-        if (message.author.bot) return;
-
-        const guildSettings = this.settings.guilds[channel.guild_id];
-        if (guildSettings?.enabled === false) return;
-
-        let matched = this.matchesUser(this.settings.whitelistedUsers, message.author, channel.guild_id);
-        if (!matched) {
-            for (const compiled of this.compiledKeywords) {
-                if (compiled.filter && !this.passesFilter(compiled.filter, message)) continue;
-                if (compiled.regex.test(message.content || "") || message.embeds?.some(e => compiled.regex.test(JSON.stringify(e)))) {
-                    matched = true;
-                    break;
-                }
-            }
-        }
-
-        if (matched) {
-            const currentUser = this.UserStore?.getCurrentUser();
-            if (currentUser && !message.mentions?.some(m => m.id === currentUser.id)) {
-                message.mentions = [...(message.mentions || []), currentUser];
-                message.mentioned = true;
-            }
-        }
+      }
     }
 
-    parseKeyword(keyword) {
-        let filter = null, pattern = keyword;
-        const userFilterMatch = /^@([^:]+):(.+)$/.exec(keyword);
-        if (userFilterMatch) {
-            filter = { type: "@", id: userFilterMatch[1] };
-            pattern = userFilterMatch[2];
-        } else {
-            const idFilterMatch = /^(#?)(\d+):(.+)$/.exec(keyword);
-            if (idFilterMatch) {
-                filter = { type: idFilterMatch[1] || "guild", id: idFilterMatch[2] };
-                pattern = idFilterMatch[3];
-            }
-        }
-        try {
-            const regexMatch = /^\/(.+)\/([gimsuy]*)$/.exec(pattern);
-            if (regexMatch) {
-                return { filter, regex: new RegExp(regexMatch[1], regexMatch[2]) };
-            }
-            const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            return { filter, regex: new RegExp(`(?<!\\w)${escaped}(?!\\w)`, "i") };
-        } catch { return null; }
+    if (matched) {
+      const currentUser = this.UserStore?.getCurrentUser();
+      if (
+        currentUser &&
+        !message.mentions?.some((m) => m.id === currentUser.id)
+      ) {
+        message.mentions = [...(message.mentions || []), currentUser];
+        message.mentioned = true;
+      }
+    }
+  }
+
+  parseKeyword(keyword) {
+    let filter = null,
+      pattern = keyword;
+    const userFilterMatch = /^@([^:]+):(.+)$/.exec(keyword);
+    if (userFilterMatch) {
+      filter = { type: "@", id: userFilterMatch[1] };
+      pattern = userFilterMatch[2];
+    } else {
+      const idFilterMatch = /^(#?)(\d+):(.+)$/.exec(keyword);
+      if (idFilterMatch) {
+        filter = { type: idFilterMatch[1] || "guild", id: idFilterMatch[2] };
+        pattern = idFilterMatch[3];
+      }
+    }
+    try {
+      const regexMatch = /^\/(.+)\/([gimsuy]*)$/.exec(pattern);
+      if (regexMatch) {
+        return { filter, regex: new RegExp(regexMatch[1], regexMatch[2]) };
+      }
+      const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return { filter, regex: new RegExp(`(?<!\\w)${escaped}(?!\\w)`, "i") };
+    } catch {
+      return null;
+    }
+  }
+
+  passesFilter(filter, message) {
+    if (filter.type === "@") {
+      if (/^\d+$/.test(filter.id)) return message.author.id === filter.id;
+      return this.matchesUser([filter.id], message.author, message.guild_id);
+    }
+    if (filter.type === "#") return message.channel_id === filter.id;
+    return message.guild_id === filter.id;
+  }
+
+  matchesUser(list, author, guildId = null) {
+    const user = this.UserStore?.getUser(author.id) || author;
+    const username = (user.username || author.username)?.toLowerCase();
+    const displayName = (
+      user.globalName ||
+      user.global_name ||
+      author.globalName ||
+      author.global_name
+    )?.toLowerCase();
+
+    let nickname = null;
+    if (guildId && this.GuildMemberStore) {
+      nickname = this.GuildMemberStore.getMember(
+        guildId,
+        author.id,
+      )?.nick?.toLowerCase();
     }
 
-    passesFilter(filter, message) {
-        if (filter.type === "@") {
-            if (/^\d+$/.test(filter.id)) return message.author.id === filter.id;
-            return this.matchesUser([filter.id], message.author, message.guild_id);
-        }
-        if (filter.type === "#") return message.channel_id === filter.id;
-        return message.guild_id === filter.id;
-    }
-
-    matchesUser(list, author, guildId = null) {
-        const user = this.UserStore?.getUser(author.id) || author;
-        const username = (user.username || author.username)?.toLowerCase();
-        const displayName = (user.globalName || user.global_name || author.globalName || author.global_name)?.toLowerCase();
-
-        let nickname = null;
-        if (guildId && this.GuildMemberStore) {
-            nickname = this.GuildMemberStore.getMember(guildId, author.id)?.nick?.toLowerCase();
-        }
-
-        return list.some(entry => {
-            const e = entry.toLowerCase();
-            return author.id === entry || username === e || displayName === e || nickname === e;
-        });
-    }
+    return list.some((entry) => {
+      const e = entry.toLowerCase();
+      return (
+        author.id === entry ||
+        username === e ||
+        displayName === e ||
+        nickname === e
+      );
+    });
+  }
 };
