@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="placeholder.png">       
+  <img width="1236" height="736" alt="Incognito" src="https://github.com/user-attachments/assets/6f4b8279-e911-4420-9d96-108919dd28e5" /> 
 </p>
 
 > Work in progress
