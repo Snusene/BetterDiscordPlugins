@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
- * @version 1.3.3
+ * @version 1.4.0
  * @website https://github.com/Snusene/BetterDiscordPlugins
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/HideSidebar/HideSidebar.plugin.js
  */
@@ -17,8 +17,15 @@ module.exports = class HideSidebar {
   constructor(meta) {
     this.api = new BdApi(meta.name);
     this.expanded = false;
-    this.sidebarClass = null;
-    this.guildsClass = null;
+    this.collapseTimeout = null;
+    this.lastMouseX = 0;
+    this.lastMouseY = 0;
+    this.expandTime = 0;
+    this.sidebarEl = null;
+    this.sidebarListEl = null;
+    this.guildsEl = null;
+    this.bounds = null;
+    this.pending = false;
   }
 
   start() {
@@ -26,91 +33,193 @@ module.exports = class HideSidebar {
       Filters.byKeys("sidebar", "guilds", "base"),
     );
     this.sidebarClass = classes.sidebar;
+    this.sidebarListClass = classes.sidebarList;
     this.guildsClass = classes.guilds;
 
+    this.stopped = false;
     this.addStyles();
     this.bindEvents();
-    this.collapse();
+    this.waitForElements();
   }
 
   stop() {
-    this.api.DOM.removeStyle("zrodevkaanislove");
+    this.stopped = true;
+    this.api.DOM.removeStyle("HideSidebar");
     this.unbindEvents();
-    document.querySelector(`.${this.sidebarClass}`)?.classList.remove("hidden");
+    this.sidebarListEl?.classList.remove("hidden");
+    this.guildsEl?.classList.remove("hidden");
+    this.sidebarEl = null;
+    this.sidebarListEl = null;
+    this.guildsEl = null;
+    this.bounds = null;
+    this.onMove = null;
+    this.onLeave = null;
+  }
+
+  waitForElements() {
+    const tryCollapse = () => {
+      if (this.stopped) return;
+      const sidebarList = document.querySelector(`.${this.sidebarListClass}`);
+      const guilds = document.querySelector(`.${this.guildsClass}`);
+      if (sidebarList && guilds) {
+        sidebarList.classList.add("hidden");
+        guilds.classList.add("hidden");
+      } else {
+        requestAnimationFrame(tryCollapse);
+      }
+    };
+    tryCollapse();
+  }
+
+  cacheElements() {
+    this.sidebarEl = document.querySelector(`.${this.sidebarClass}`);
+    this.sidebarListEl = document.querySelector(`.${this.sidebarListClass}`);
+    this.guildsEl = document.querySelector(`.${this.guildsClass}`);
+  }
+
+  updateBounds() {
+    const sb = this.sidebarEl.getBoundingClientRect();
+    const g = this.guildsEl.getBoundingClientRect();
+    this.bounds = {
+      left: Math.min(sb.left, g.left),
+      right: Math.max(sb.right, g.right),
+      top: Math.min(sb.top, g.top),
+      bottom: Math.max(sb.bottom, g.bottom),
+    };
+  }
+
+  isInBounds(x, y) {
+    return (
+      x >= this.bounds.left &&
+      x <= this.bounds.right &&
+      y >= this.bounds.top &&
+      y <= this.bounds.bottom
+    );
   }
 
   addStyles() {
     const css = `
-      .${this.sidebarClass} {
-        transition: transform 250ms ease, opacity 250ms ease !important;
+      .${this.sidebarListClass},
+      .${this.guildsClass} {
+        transition: width 200ms ease, transform 200ms ease !important;
+        will-change: width, transform;
       }
 
-      .hidden.${this.sidebarClass} {
-        transform: translateX(-100%) !important;
-        position: absolute !important;
-        opacity: 0 !important;
+      .${this.sidebarListClass}.hidden,
+      .${this.guildsClass}.hidden {
+        width: 0 !important;
+        transform: translateX(-50px) !important;
+        overflow: hidden !important;
         pointer-events: none !important;
-        transition-delay: 100ms !important;
       }
     `;
-
-    this.api.DOM.addStyle("zrodevkaanislove", css);
+    this.api.DOM.addStyle("HideSidebar", css);
   }
 
   bindEvents() {
     this.onMove = this.onMouseMove.bind(this);
-    document.addEventListener("mousemove", this.onMove);
-    this.startPolling();
+    this.onLeave = this.onMouseLeave.bind(this);
+    document.addEventListener("mousemove", this.onMove, { passive: true });
+    document.addEventListener("mouseleave", this.onLeave);
   }
 
   unbindEvents() {
     document.removeEventListener("mousemove", this.onMove);
-    clearInterval(this.pollId);
+    document.removeEventListener("mouseleave", this.onLeave);
+    if (this.collapseTimeout) {
+      clearTimeout(this.collapseTimeout);
+      this.collapseTimeout = null;
+    }
   }
 
-  startPolling() {
-    this.expandTime = 0;
-    this.unhoverTime = 0;
-    this.pollId = setInterval(() => {
-      if (!this.expanded) return;
-      if (Date.now() - this.expandTime < 300) return;
-      const sidebar = document.querySelector(`.${this.sidebarClass}`);
-      const guilds = document.querySelector(`.${this.guildsClass}`);
-      const hoveredElements = document.querySelectorAll(":hover");
-      const onPopout = Array.from(hoveredElements).some(
-        (el) =>
-          el.closest('[class*="popout"]') ||
-          el.closest('[class*="menu"]') ||
-          el.closest('[class*="streamPreview"]') ||
-          el.closest('[class*="animator"]') ||
-          el.closest('[class*="ResizeHandle"]') ||
-          el.closest('[class*="dragging"]'),
-      );
-      const hovered =
-        sidebar?.matches(":hover") || guilds?.matches(":hover") || onPopout;
-      if (hovered) {
-        this.unhoverTime = 0;
-      } else {
-        if (!this.unhoverTime) this.unhoverTime = Date.now();
-        if (Date.now() - this.unhoverTime > 500) this.collapse();
-      }
-    }, 200);
+  onMouseLeave() {
+    if (this.expanded) {
+      this.collapse();
+    }
   }
 
   onMouseMove(e) {
+    this.lastMouseX = e.clientX;
+    this.lastMouseY = e.clientY;
+
     if (e.clientX <= 10 && !this.expanded) {
       this.expand();
+      return;
+    }
+
+    if (!this.expanded || this.pending) return;
+
+    this.pending = true;
+    requestAnimationFrame(() => {
+      this.pending = false;
+      this.checkHover();
+    });
+  }
+
+  checkHover() {
+    if (!this.expanded) return;
+    if (Date.now() - this.expandTime < 300) return;
+
+    if (!this.bounds) {
+      this.updateBounds();
+    }
+
+    if (this.isInBounds(this.lastMouseX, this.lastMouseY)) {
+      if (this.collapseTimeout) {
+        clearTimeout(this.collapseTimeout);
+        this.collapseTimeout = null;
+      }
+    } else if (!this.collapseTimeout) {
+      this.collapseTimeout = setTimeout(() => this.tryCollapse(), 150);
+    }
+  }
+
+  tryCollapse() {
+    this.collapseTimeout = null;
+    const el = document.elementFromPoint(this.lastMouseX, this.lastMouseY);
+    const onPopout = el?.closest(
+      '[class*="popout"],' +
+        '[class*="menu"],' +
+        '[class*="layerContainer"],' +
+        '[class*="streamPreview"],' +
+        '[class*="animator"],' +
+        '[class*="ResizeHandle"],' +
+        '[class*="dragging"],' +
+        '[class*="tooltip"],' +
+        '[class*="modal"]',
+    );
+
+    if (onPopout) {
+      this.collapseTimeout = setTimeout(() => this.tryCollapse(), 200);
+    } else {
+      this.collapse();
     }
   }
 
   expand() {
+    if (this.expanded) return;
     this.expanded = true;
     this.expandTime = Date.now();
-    document.querySelector(`.${this.sidebarClass}`)?.classList.remove("hidden");
+
+    if (!this.sidebarListEl || !this.guildsEl) {
+      this.cacheElements();
+    }
+
+    this.sidebarListEl.classList.remove("hidden");
+    this.guildsEl.classList.remove("hidden");
   }
 
   collapse() {
+    if (!this.expanded) return;
     this.expanded = false;
-    document.querySelector(`.${this.sidebarClass}`)?.classList.add("hidden");
+    this.bounds = null;
+
+    if (this.collapseTimeout) {
+      clearTimeout(this.collapseTimeout);
+      this.collapseTimeout = null;
+    }
+
+    this.sidebarListEl.classList.add("hidden");
+    this.guildsEl.classList.add("hidden");
   }
 };
