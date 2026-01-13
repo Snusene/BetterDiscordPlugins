@@ -3,14 +3,16 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Bypass Do Not Disturb for DMs from specific people. Right click a user to add them.
- * @version 1.0.3
+ * @version 1.0.4
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/PriorityDM
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/PriorityDM/PriorityDM.plugin.js
  */
 
 module.exports = class PriorityDM {
-  constructor() {
+  constructor(meta) {
+    this.api = new BdApi(meta.name);
     this.priorityUsers = new Set();
+    this.settings = { overrideStreamerMode: false };
     this.lastPing = 0;
     this.onMessage = this.onMessage.bind(this);
   }
@@ -36,12 +38,33 @@ module.exports = class PriorityDM {
   }
 
   loadSettings() {
-    const saved = BdApi.Data.load("PriorityDM", "users") || [];
+    const saved = this.api.Data.load("users") || [];
     this.priorityUsers = new Set(saved);
+    const settings = this.api.Data.load("settings");
+    if (settings) this.settings = settings;
   }
 
   saveSettings() {
-    BdApi.Data.save("PriorityDM", "users", [...this.priorityUsers]);
+    this.api.Data.save("users", [...this.priorityUsers]);
+    this.api.Data.save("settings", this.settings);
+  }
+
+  getSettingsPanel() {
+    return BdApi.UI.buildSettingsPanel({
+      settings: [
+        {
+          type: "switch",
+          id: "overrideStreamerMode",
+          name: "Override Streamer Mode",
+          note: "Notify even when Streamer Mode is blocking notifications",
+          value: this.settings.overrideStreamerMode,
+        },
+      ],
+      onChange: (_, id, value) => {
+        this.settings[id] = value;
+        this.api.Data.save("settings", this.settings);
+      },
+    });
   }
 
   patchContextMenu() {
@@ -103,7 +126,11 @@ module.exports = class PriorityDM {
       author.globalName,
       message.content,
       { message, channel },
-      { overrideStreamerMode: true, sound: "message1", volume: 0.4 },
+      {
+        overrideStreamerMode: this.settings.overrideStreamerMode,
+        sound: "message1",
+        volume: 0.4,
+      },
     );
   }
 };
