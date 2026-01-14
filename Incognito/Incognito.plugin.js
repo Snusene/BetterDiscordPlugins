@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Go incognito with one click. Stop tracking, hide typing, disable activity, and much more.
- * @version 0.8.0
+ * @version 0.9.0
  * @author Snues
  * @authorId 98862725609816064
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
@@ -44,21 +44,21 @@ module.exports = class Incognito {
       stopAnalytics: true,
       stopSentry: true,
       stopProcessMonitor: true,
-      blockUserAffinities: true,
       disableIdle: true,
       stripTrackingUrls: true,
       spoofLocale: true,
       silentTyping: true,
-      hideSpotify: true,
       anonymiseFiles: true,
       antiLog: true,
+      blockReadReceipts: true,
     };
     this.savedConsole = {};
   }
 
   start() {
-    this.settings = this.api.Data.load("settings") ?? {
+    this.settings = {
       ...this.defaultSettings,
+      ...(this.api.Data.load("settings") ?? {}),
     };
     this.failed = new Set(this.api.Data.load("failed") ?? []);
 
@@ -77,11 +77,9 @@ module.exports = class Incognito {
         { searchExports: true },
       ),
       TypingModule: BdApi.Webpack.getByKeys("startTyping", "stopTyping"),
-      SpotifyStore: BdApi.Webpack.getStore("SpotifyStore"),
       LocalActivityStore: BdApi.Webpack.getStore("LocalActivityStore"),
       RunningGameStore: BdApi.Webpack.getStore("RunningGameStore"),
       ActivityTrackingStore: BdApi.Webpack.getStore("ActivityTrackingStore"),
-      UserAffinitiesStore: BdApi.Webpack.getStore("UserAffinitiesV2Store"),
       IdleStore: BdApi.Webpack.getStore("IdleStore"),
       MessageActions: BdApi.Webpack.getByKeys("sendMessage", "editMessage"),
       SuperProperties: BdApi.Webpack.getByKeys(
@@ -89,21 +87,21 @@ module.exports = class Incognito {
         "getSuperPropertiesBase64",
       ),
       Uploader: BdApi.Webpack.getModule((m) => m?.prototype?.uploadFiles),
+      AckModule: BdApi.Webpack.getByKeys("ack"),
     };
 
-    this.retryFailedFeatures();
+    this.retryFailed();
 
     if (this.settings.stopAnalytics) this.disableAnalytics();
     if (this.settings.stopSentry) this.disableSentry();
     if (this.settings.stopProcessMonitor) this.disableProcessMonitor();
-    if (this.settings.blockUserAffinities) this.blockUserAffinities();
     if (this.settings.disableIdle) this.disableIdle();
     if (this.settings.stripTrackingUrls) this.stripUrls();
     if (this.settings.spoofLocale) this.spoofLocale();
     if (this.settings.silentTyping) this.silentTyping();
-    if (this.settings.hideSpotify) this.hideSpotify();
     if (this.settings.anonymiseFiles) this.anonymiseFiles();
     if (this.settings.antiLog) this.antiLog();
+    if (this.settings.blockReadReceipts) this.blockReadReceipts();
   }
 
   stop() {
@@ -130,19 +128,18 @@ module.exports = class Incognito {
     this.failed = null;
   }
 
-  retryFailedFeatures() {
+  retryFailed() {
     const featureModules = {
       stopAnalytics: () => this.modules.Analytics,
       stopSentry: () => window.DiscordSentry?.getClient?.(),
       stopProcessMonitor: () => this.modules.NativeModule,
-      blockUserAffinities: () => this.modules.UserAffinitiesStore,
       disableIdle: () => this.modules.IdleStore,
       stripTrackingUrls: () => this.modules.MessageActions?.sendMessage,
       spoofLocale: () => this.modules.SuperProperties?.getSuperProperties,
       silentTyping: () => this.modules.TypingModule?.startTyping,
-      hideSpotify: () => this.modules.SpotifyStore,
       anonymiseFiles: () => this.modules.Uploader,
       antiLog: () => this.modules.MessageActions?.editMessage,
+      blockReadReceipts: () => this.modules.AckModule?.ack,
     };
 
     for (const feature of this.failed) {
@@ -402,33 +399,6 @@ module.exports = class Incognito {
     );
   }
 
-  blockUserAffinities() {
-    const { UserAffinitiesStore } = this.modules;
-
-    if (UserAffinitiesStore) {
-      this.api.Patcher.instead(
-        UserAffinitiesStore,
-        "getUserAffinities",
-        () => [],
-      );
-      this.api.Patcher.instead(
-        UserAffinitiesStore,
-        "getUserAffinitiesMap",
-        () => new Map(),
-      );
-      this.api.Patcher.instead(
-        UserAffinitiesStore,
-        "getUserAffinity",
-        () => null,
-      );
-    } else {
-      this.markFailed("blockUserAffinities");
-      this.api.UI.showToast("Incognito: User affinity blocking unavailable", {
-        type: "warning",
-      });
-    }
-  }
-
   disableIdle() {
     const { IdleStore } = this.modules;
 
@@ -566,20 +536,6 @@ module.exports = class Incognito {
     }
   }
 
-  hideSpotify() {
-    const { SpotifyStore } = this.modules;
-
-    if (SpotifyStore) {
-      this.api.Patcher.instead(SpotifyStore, "shouldShowActivity", () => false);
-      this.api.Patcher.instead(SpotifyStore, "getActivity", () => null);
-    } else {
-      this.markFailed("hideSpotify");
-      this.api.UI.showToast("Incognito: Spotify hiding unavailable", {
-        type: "warning",
-      });
-    }
-  }
-
   randomString(length) {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -651,6 +607,31 @@ module.exports = class Incognito {
     }
   }
 
+  blockReadReceipts() {
+    const { AckModule } = this.modules;
+    let failed = [];
+
+    if (AckModule?.ack) {
+      this.api.Patcher.instead(AckModule, "ack", () => {});
+    } else {
+      failed.push("message ack");
+    }
+
+    if (typeof AckModule?.y5 === "function") {
+      this.api.Patcher.instead(AckModule, "y5", () => {});
+    } else {
+      failed.push("bulk ack");
+    }
+
+    if (failed.length === 2) {
+      this.markFailed("blockReadReceipts");
+      this.api.UI.showToast(
+        `Incognito: Read receipt blocking (${failed.join(", ")}) unavailable`,
+        { type: "warning" },
+      );
+    }
+  }
+
   saveSettings() {
     this.api.Data.save("settings", this.settings);
   }
@@ -676,22 +657,15 @@ module.exports = class Incognito {
               type: "switch",
               id: "stopSentry",
               name: "Stop Sentry",
-              note: "Disables Sentry error tracking and restores original console methods.",
+              note: "Disables Sentry error and crash reporting.",
               value: this.settings.stopSentry,
             },
             {
               type: "switch",
               id: "stopProcessMonitor",
               name: "Stop Process Monitor",
-              note: "Stops Discord from monitoring running processes on your PC and prevents your currently played game from showing.",
+              note: "Stops Discord from scanning running processes on your PC to detect games and applications.",
               value: this.settings.stopProcessMonitor,
-            },
-            {
-              type: "switch",
-              id: "blockUserAffinities",
-              name: "Block User Affinities",
-              note: "Blocks Discord from tracking your interaction patterns with other users (DM probability, voice chat likelihood, etc.).",
-              value: this.settings.blockUserAffinities,
             },
           ],
         },
@@ -702,6 +676,13 @@ module.exports = class Incognito {
           collapsible: true,
           shown: true,
           settings: [
+            {
+              type: "switch",
+              id: "blockReadReceipts",
+              name: "Block Read Receipts",
+              note: "Prevents Discord from knowing which messages you've read. May cause unread badges to accumulate.",
+              value: this.settings.blockReadReceipts,
+            },
             {
               type: "switch",
               id: "disableIdle",
@@ -729,13 +710,6 @@ module.exports = class Incognito {
               name: "Silent Typing",
               note: "Hides your typing indicator from other users.",
               value: this.settings.silentTyping,
-            },
-            {
-              type: "switch",
-              id: "hideSpotify",
-              name: "Hide Spotify",
-              note: "Hides your Spotify listening activity from others.",
-              value: this.settings.hideSpotify,
             },
             {
               type: "switch",
