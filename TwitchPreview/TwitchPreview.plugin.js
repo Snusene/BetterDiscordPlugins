@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Improved previews for Twitch channel links.
- * @version 2.1.3
+ * @version 2.3.1
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/TwitchPreview
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/TwitchPreview/TwitchPreview.plugin.js
  */
@@ -29,6 +29,7 @@ module.exports = class TwitchPreview {
       "anchorUnderlineOnHover",
     );
 
+    this.channelCache = new Map();
     this.buildComponents();
     this.patchEmbeds();
   }
@@ -36,69 +37,80 @@ module.exports = class TwitchPreview {
   stop() {
     BdApi.DOM.removeStyle("TwitchPreview");
     BdApi.Patcher.unpatchAll("TwitchPreview");
+    this.channelCache.clear();
   }
 
   get css() {
     return `
-            .twitch-embed {
-                width: 100%;
-                max-width: 432px;
-                border-left: 4px solid #9146ff;
-                border-radius: 4px;
-                padding: 8px 16px 16px 12px;
-                display: flex;
-                flex-direction: column;
-                box-sizing: border-box;
-            }
-            .twitch-embed-provider {
-                color: var(--primary-360);
-                font-size: 12px;
-                font-weight: 400;
-            }
-            .twitch-embed .twitch-combined-title {
-                color: var(--text-link); /* still works */
-                font-size: 16px;
-                font-weight: 600;
-                line-height: 1.25;
-                cursor: pointer;
-                margin-top: 8px;
-            }
-            .twitch-embed .twitch-combined-title:hover {
-                text-decoration: underline;
-            }
-            .twitch-embed .twitch-video-wrapper {
-                position: relative;
-                width: 100%;
-                max-width: 400px;
-                aspect-ratio: 16/9;
-                border-radius: 4px;
-                overflow: hidden;
-                background: #18181b;
-                margin-top: 16px;
-            }
-            .twitch-embed .twitch-video-wrapper img,
-            .twitch-embed .twitch-video-wrapper iframe {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                border: none;
-                object-fit: cover;
-            }
-            .twitch-embed .twitch-live-badge {
-                position: absolute;
-                top: 10px;
-                left: 10px;
-                background: #eb0400;
-                color: white;
-                padding: 2px 6px;
-                border-radius: 3px;
-                font-size: 12px;
-                font-weight: 600;
-                z-index: 1;
-            }
-        `;
+      .twitch-embed {
+        width: 100%;
+        max-width: 432px;
+        border-left: 4px solid #9146ff;
+        border-radius: 4px;
+        padding: 8px 16px 16px 12px;
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+      }
+      .twitch-embed-provider {
+        color: var(--primary-360);
+        font-size: 12px;
+        font-weight: 400;
+      }
+      .twitch-embed .twitch-combined-title {
+        color: var(--text-link);
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 1.25;
+        cursor: pointer;
+        margin-top: 8px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .twitch-embed .twitch-combined-title:hover {
+        text-decoration: underline;
+      }
+      .twitch-embed .twitch-video-wrapper {
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+        aspect-ratio: 16/9;
+        border-radius: 4px;
+        overflow: hidden;
+        background: #18181b;
+        margin-top: 16px;
+      }
+      .twitch-embed .twitch-video-wrapper img,
+      .twitch-embed .twitch-video-wrapper iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border: none;
+        object-fit: cover;
+      }
+      .twitch-embed .twitch-live-badge {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: #eb0400;
+        color: white;
+        padding: 0 5px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 600;
+        z-index: 1;
+        font-family: "Roobert", "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        line-height: 20px;
+      }
+      .twitch-embed.twitch-playing .twitch-live-badge {
+        display: none;
+      }
+    `;
   }
 
   patchEmbeds() {
@@ -154,10 +166,17 @@ module.exports = class TwitchPreview {
 
     this.TwitchEmbed = function TwitchEmbed({ channel, originalEmbed }) {
       const [isPlaying, setIsPlaying] = React.useState(false);
-      const [channelInfo, setChannelInfo] = React.useState();
+      const [channelInfo, setChannelInfo] = React.useState(
+        self.channelCache.get(channel),
+      );
 
       React.useEffect(() => {
-        self.getChannelInfo(channel).then(setChannelInfo);
+        if (!self.channelCache.has(channel)) {
+          self.getChannelInfo(channel).then((info) => {
+            self.channelCache.set(channel, info);
+            setChannelInfo(info);
+          });
+        }
       }, [channel]);
 
       if (channelInfo === undefined) return null;
@@ -168,7 +187,7 @@ module.exports = class TwitchPreview {
         : channelInfo.displayName;
       const isLive = channelInfo.isLive;
       const imageSrc = isLive
-        ? `https://static-cdn.jtvnw.net/previews-ttv/live_user_${channel}-640x360.jpg?t=${Date.now()}`
+        ? `https://static-cdn.jtvnw.net/previews-ttv/live_user_${channel}-640x360.jpg?t=${Math.floor(Date.now() / 300000)}`
         : channelInfo.offlineImage ||
           channelInfo.bannerImage ||
           channelInfo.profileImage;
@@ -176,7 +195,9 @@ module.exports = class TwitchPreview {
       if (isPlaying) {
         return e(
           "article",
-          { className: `twitch-embed ${embedWrapperClasses.embedFull}` },
+          {
+            className: `twitch-embed twitch-playing ${embedWrapperClasses.embedFull}`,
+          },
           e("div", { className: "twitch-embed-provider" }, "Twitch"),
           e(
             "div",
@@ -194,6 +215,9 @@ module.exports = class TwitchPreview {
               src: `https://player.twitch.tv/?channel=${channel}&parent=discord.com&autoplay=true`,
               allow: "autoplay; fullscreen",
             }),
+            isLive
+              ? e("div", { className: "twitch-live-badge" }, "LIVE")
+              : null,
           ),
         );
       }
