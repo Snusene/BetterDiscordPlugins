@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Go incognito with one click. Stop tracking, hide typing, disable activity, and much more.
- * @version 0.9.0
+ * @version 0.9.5
  * @author Snues
  * @authorId 98862725609816064
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
@@ -34,38 +34,43 @@ const TRACKING_PARAMS = new Set([
   "s",
   "t",
 ]);
-const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+
+const STAT_KEYS = [
+  "analyticsBlocked",
+  "sentryBlocked",
+  "readReceiptsBlocked",
+  "typingIndicatorsBlocked",
+  "trackingUrlsStripped",
+  "idleSpoofed",
+  "filesAnonymized",
+];
+
+const CHANGELOG = [
+  {
+    title: "New",
+    type: "added",
+    items: [
+      "Changelog popup on version updates",
+      "Stats banner showing session and all time privacy actions",
+      "Tracking params stripped when copying/pasting URLs",
+      "Idle detection blocked during voice calls",
+    ],
+  },
+  {
+    title: "Removed",
+    type: "fixed",
+    items: ["AntiLog - Against ToS (selfbotting)"],
+  },
+];
 
 module.exports = class Incognito {
-  constructor(meta) {
-    this.meta = meta;
-    this.api = new BdApi(meta.name);
-    this.defaultSettings = {
-      stopAnalytics: true,
-      stopSentry: true,
-      stopProcessMonitor: true,
-      disableIdle: true,
-      stripTrackingUrls: true,
-      spoofLocale: true,
-      silentTyping: true,
-      anonymiseFiles: true,
-      antiLog: true,
-      blockReadReceipts: true,
-    };
-    this.savedConsole = {};
-  }
+  static _moduleCache = null;
 
-  start() {
-    this.settings = {
-      ...this.defaultSettings,
-      ...(this.api.Data.load("settings") ?? {}),
-    };
-    this.failed = new Set(this.api.Data.load("failed") ?? []);
+  static getModules() {
+    if (Incognito._moduleCache) return Incognito._moduleCache;
 
-    this.modules = {
+    Incognito._moduleCache = {
       Analytics: BdApi.Webpack.getByKeys("AnalyticEventConfigs"),
-      MetadataTracking: BdApi.Webpack.getByKeys("trackWithMetadata"),
-      ExperimentTracking: BdApi.Webpack.getByKeys("trackExperimentExposure"),
       NativeModule: BdApi.Webpack.getByKeys("getDiscordUtils"),
       CrashReporter: BdApi.Webpack.getModule((m) => m?.submitLiveCrashReport),
       SettingsManager: BdApi.Webpack.getModule(
@@ -88,7 +93,84 @@ module.exports = class Incognito {
       ),
       Uploader: BdApi.Webpack.getModule((m) => m?.prototype?.uploadFiles),
       AckModule: BdApi.Webpack.getByKeys("ack"),
+      TimezoneModule: (() => {
+        const tzMod = BdApi.Webpack.getBySource("resolvedOptions().timeZone", {
+          searchExports: true,
+        });
+        if (!tzMod) return null;
+        const tzKey = Object.keys(tzMod).find(
+          (k) => typeof tzMod[k] === "function",
+        );
+        return tzKey ? [tzMod, tzKey] : null;
+      })(),
+      DebugOptionsStore: BdApi.Webpack.getByKeys("getDebugOptionsHeaderValue"),
     };
+
+    return Incognito._moduleCache;
+  }
+
+  constructor(meta) {
+    this.meta = meta;
+    this.api = new BdApi(meta.name);
+    this.patchers = {};
+    this.defaultSettings = {
+      stopAnalytics: true,
+      stopSentry: true,
+      stopProcessMonitor: true,
+      disableIdle: true,
+      stripTrackingUrls: true,
+      spoofLocale: true,
+      silentTyping: true,
+      anonymiseFiles: true,
+      blockReadReceipts: true,
+    };
+    this.initStats();
+  }
+
+  initStats() {
+    const defaultStats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0]));
+    this.stats = this.api.Data.load("stats") ?? { ...defaultStats };
+    this.sessionStats = { ...defaultStats };
+    this.debouncedSaveStats = BdApi.Utils.debounce(() => {
+      this.api.Data.save("stats", this.stats);
+    }, 5000);
+  }
+
+  showChangelog() {
+    const lastVersion = this.api.Data.load("lastVersion");
+    if (lastVersion === this.meta.version) return;
+    this.api.Data.save("lastVersion", this.meta.version);
+    BdApi.UI.showChangelogModal({
+      title: this.meta.name,
+      subtitle: `v${this.meta.version}`,
+      changes: CHANGELOG,
+    });
+  }
+
+  incrementStat(stat) {
+    if (this.stats[stat] !== undefined) {
+      this.stats[stat]++;
+      this.sessionStats[stat]++;
+      this.debouncedSaveStats();
+    }
+  }
+
+  getPatcher(feature) {
+    if (!this.patchers[feature]) {
+      this.patchers[feature] = new BdApi(
+        `${this.meta.name}:${feature}`,
+      ).Patcher;
+    }
+    return this.patchers[feature];
+  }
+
+  start() {
+    this.settings = {
+      ...this.defaultSettings,
+      ...(this.api.Data.load("settings") ?? {}),
+    };
+    this.failed = new Set(this.api.Data.load("failed") ?? []);
+    this.modules = Incognito.getModules();
 
     this.retryFailed();
 
@@ -100,32 +182,41 @@ module.exports = class Incognito {
     if (this.settings.spoofLocale) this.spoofLocale();
     if (this.settings.silentTyping) this.silentTyping();
     if (this.settings.anonymiseFiles) this.anonymiseFiles();
-    if (this.settings.antiLog) this.antiLog();
     if (this.settings.blockReadReceipts) this.blockReadReceipts();
+
+    this.injectStyles();
+    this.showChangelog();
+  }
+
+  injectStyles() {
+    this.api.DOM.addStyle(`
+      .incognito-banner { text-align: center; padding: 16px; background: linear-gradient(135deg, var(--brand-500) 0%, var(--brand-560) 100%); border-radius: 8px; margin-bottom: 16px; }
+      .incognito-title { font-size: 12px; color: rgba(255,255,255,0.8); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+      .incognito-stats { display: flex; justify-content: center; gap: 32px; }
+      .incognito-divider { width: 1px; background: rgba(255,255,255,0.3); }
+      .incognito-stat { display: flex; flex-direction: column; align-items: center; }
+      .incognito-value { font-size: 32px; font-weight: 700; color: white; line-height: 1; }
+      .incognito-label { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 4px; }
+    `);
   }
 
   stop() {
-    this.api.Patcher.unpatchAll();
-    this.restoreConsole();
-
-    if (this.originalSendBeacon) {
-      navigator.sendBeacon = this.originalSendBeacon;
-      this.originalSendBeacon = null;
+    for (const patcher of Object.values(this.patchers)) {
+      patcher.unpatchAll();
     }
+    this.patchers = {};
 
-    if (this.originalFetch) {
-      window.fetch = this.originalFetch;
-      this.originalFetch = null;
-    }
+    this.restoreSentryTransport();
+    this.disableClipboardHandlers();
 
-    if (this.originalSetRequestHeader) {
-      XMLHttpRequest.prototype.setRequestHeader = this.originalSetRequestHeader;
-      this.originalSetRequestHeader = null;
-    }
-
-    this.modules = null;
+    this.api.DOM.removeStyle();
+    this.debouncedSaveStats?.();
     this.settings = null;
     this.failed = null;
+    this.modules = null;
+    this.stats = null;
+    this.sessionStats = null;
+    this.debouncedSaveStats = null;
   }
 
   retryFailed() {
@@ -138,7 +229,6 @@ module.exports = class Incognito {
       spoofLocale: () => this.modules.SuperProperties?.getSuperProperties,
       silentTyping: () => this.modules.TypingModule?.startTyping,
       anonymiseFiles: () => this.modules.Uploader,
-      antiLog: () => this.modules.MessageActions?.editMessage,
       blockReadReceipts: () => this.modules.AckModule?.ack,
     };
 
@@ -161,73 +251,52 @@ module.exports = class Incognito {
     this.api.Data.save("failed", [...this.failed]);
   }
 
+  handleFailure(feature, description, failed = null) {
+    if (failed !== null && failed.length === 0) return;
+    this.markFailed(feature);
+    const msg = failed?.length
+      ? `${description} (${failed.join(", ")})`
+      : description;
+    this.api.UI.showToast(`Incognito: ${msg} unavailable`, { type: "warning" });
+  }
+
   disableAnalytics() {
-    const {
-      Analytics,
-      MetadataTracking,
-      ExperimentTracking,
-      NativeModule,
-      CrashReporter,
-    } = this.modules;
+    const patcher = this.getPatcher("stopAnalytics");
+    const { Analytics, NativeModule, CrashReporter } = this.modules;
     let failed = [];
 
     if (!Analytics) {
       failed.push("events");
     } else {
       if (Analytics.default?.track) {
-        this.api.Patcher.instead(Analytics.default, "track", () => {});
+        patcher.instead(Analytics.default, "track", () => {
+          this.incrementStat("analyticsBlocked");
+        });
       } else {
         failed.push("events");
       }
 
       if (Analytics.trackNetworkAction) {
-        this.api.Patcher.instead(Analytics, "trackNetworkAction", () => {});
+        patcher.instead(Analytics, "trackNetworkAction", () => {});
       } else {
         failed.push("network");
       }
 
       if (Analytics.debugLogEvent) {
-        this.api.Patcher.instead(Analytics, "debugLogEvent", () => {});
+        patcher.instead(Analytics, "debugLogEvent", () => {});
       } else {
         failed.push("debug logs");
       }
     }
 
-    if (MetadataTracking?.trackWithMetadata) {
-      this.api.Patcher.instead(MetadataTracking, "trackWithMetadata", () => {});
-    } else {
-      failed.push("metadata");
-    }
-
-    if (!ExperimentTracking) {
-      failed.push("A/B tests");
-    } else {
-      if (ExperimentTracking.trackExperimentExposure) {
-        this.api.Patcher.instead(
-          ExperimentTracking,
-          "trackExperimentExposure",
-          () => {},
-        );
-      } else {
-        failed.push("A/B tests");
-      }
-      if (ExperimentTracking.track) {
-        this.api.Patcher.instead(ExperimentTracking, "track", () => {});
-      }
-    }
-
     if (CrashReporter?.submitLiveCrashReport) {
-      this.api.Patcher.instead(
-        CrashReporter,
-        "submitLiveCrashReport",
-        () => {},
-      );
+      patcher.instead(CrashReporter, "submitLiveCrashReport", () => {});
     } else {
       failed.push("crash reports");
     }
 
     if (NativeModule) {
-      this.api.Patcher.instead(
+      patcher.instead(
         NativeModule,
         "ensureModule",
         (_, [moduleName], original) => {
@@ -241,66 +310,44 @@ module.exports = class Incognito {
 
     const { ActivityTrackingStore } = this.modules;
     if (ActivityTrackingStore?.getActivities) {
-      this.api.Patcher.instead(
-        ActivityTrackingStore,
-        "getActivities",
-        () => ({}),
-      );
+      patcher.instead(ActivityTrackingStore, "getActivities", () => ({}));
     } else {
       failed.push("activity tracking");
     }
 
-    if (navigator.sendBeacon) {
-      this.originalSendBeacon = navigator.sendBeacon.bind(navigator);
-      navigator.sendBeacon = () => false;
-    }
-
-    if (failed.length > 0) {
-      this.markFailed("stopAnalytics");
-      this.api.UI.showToast(
-        `Incognito: Telemetry blocking (${failed.join(", ")}) unavailable`,
-        { type: "warning" },
-      );
-    }
+    this.handleFailure("stopAnalytics", "Telemetry blocking", failed);
   }
 
   disableSentry() {
     const client = window.DiscordSentry?.getClient?.();
     if (!client) {
-      this.markFailed("stopSentry");
-      this.api.UI.showToast("Incognito: Error reporting blocking unavailable", {
-        type: "warning",
-      });
+      this.handleFailure("stopSentry", "Error reporting blocking");
       return;
     }
 
-    client.close(0);
-
     const transport = client.getTransport?.();
-    if (transport) {
-      transport.send = () => Promise.resolve({});
+    if (transport?.send) {
+      this.originalSentryTransportSend = transport.send.bind(transport);
+      this.sentryTransport = transport;
+      transport.send = () => {
+        this.incrementStat("sentryBlocked");
+        return Promise.resolve({});
+      };
     } else {
-      this.api.UI.showToast(
-        "Incognito: Error reporting (transport) unavailable",
-        { type: "warning" },
-      );
-    }
-
-    for (const method in console) {
-      if (!Object.hasOwn(console[method], "__sentry_original__")) continue;
-      this.savedConsole[method] = console[method];
-      console[method] = console[method].__sentry_original__;
+      this.handleFailure("stopSentry", "Error reporting (transport)");
     }
   }
 
-  restoreConsole() {
-    for (const method in this.savedConsole) {
-      console[method] = this.savedConsole[method];
+  restoreSentryTransport() {
+    if (this.originalSentryTransportSend && this.sentryTransport) {
+      this.sentryTransport.send = this.originalSentryTransportSend;
     }
-    this.savedConsole = {};
+    this.originalSentryTransportSend = null;
+    this.sentryTransport = null;
   }
 
   disableProcessMonitor() {
+    const patcher = this.getPatcher("stopProcessMonitor");
     const {
       SettingsManager,
       BoolSetting,
@@ -325,56 +372,30 @@ module.exports = class Incognito {
     const DiscordUtils = NativeModule?.getDiscordUtils();
     if (DiscordUtils?.setObservedGamesCallback) {
       DiscordUtils.setObservedGamesCallback([], () => {});
-      this.api.Patcher.instead(
-        DiscordUtils,
-        "setObservedGamesCallback",
-        () => {},
-      );
+      patcher.instead(DiscordUtils, "setObservedGamesCallback", () => {});
     } else {
       failed.push("game detection");
     }
 
     if (LocalActivityStore) {
-      this.api.Patcher.instead(LocalActivityStore, "getActivities", () => []);
-      this.api.Patcher.instead(
-        LocalActivityStore,
-        "getPrimaryActivity",
-        () => null,
-      );
-      this.api.Patcher.instead(
-        LocalActivityStore,
-        "getApplicationActivity",
-        () => null,
-      );
+      patcher.instead(LocalActivityStore, "getActivities", () => []);
+      patcher.instead(LocalActivityStore, "getPrimaryActivity", () => null);
+      patcher.instead(LocalActivityStore, "getApplicationActivity", () => null);
     } else {
       failed.push("local activity");
     }
 
     if (RunningGameStore) {
-      this.api.Patcher.instead(RunningGameStore, "getVisibleGame", () => null);
-      this.api.Patcher.instead(RunningGameStore, "getRunningGames", () => []);
-      this.api.Patcher.instead(
-        RunningGameStore,
-        "getVisibleRunningGames",
-        () => [],
-      );
-      this.api.Patcher.instead(RunningGameStore, "getCandidateGames", () => []);
-      this.api.Patcher.instead(
-        RunningGameStore,
-        "isDetectionEnabled",
-        () => false,
-      );
+      patcher.instead(RunningGameStore, "getVisibleGame", () => null);
+      patcher.instead(RunningGameStore, "getRunningGames", () => []);
+      patcher.instead(RunningGameStore, "getVisibleRunningGames", () => []);
+      patcher.instead(RunningGameStore, "getCandidateGames", () => []);
+      patcher.instead(RunningGameStore, "isDetectionEnabled", () => false);
     } else {
       failed.push("running games");
     }
 
-    if (failed.length > 0) {
-      this.markFailed("stopProcessMonitor");
-      this.api.UI.showToast(
-        `Incognito: Game scanning (${failed.join(", ")}) unavailable`,
-        { type: "warning" },
-      );
-    }
+    this.handleFailure("stopProcessMonitor", "Game scanning", failed);
   }
 
   enableProcessMonitor() {
@@ -400,23 +421,25 @@ module.exports = class Incognito {
   }
 
   disableIdle() {
+    const patcher = this.getPatcher("disableIdle");
     const { IdleStore } = this.modules;
 
-    if (IdleStore) {
-      this.api.Patcher.instead(IdleStore, "isIdle", () => false);
-      this.api.Patcher.instead(IdleStore, "isAFK", () => false);
-      this.api.Patcher.instead(IdleStore, "getIdleSince", () => null);
-    } else {
-      this.markFailed("disableIdle");
-      this.api.UI.showToast("Incognito: Idle blocking unavailable", {
-        type: "warning",
-      });
+    if (!IdleStore) {
+      this.handleFailure("disableIdle", "Idle blocking");
+      return;
     }
+
+    patcher.instead(IdleStore, "isIdle", () => {
+      this.incrementStat("idleSpoofed");
+      return false;
+    });
+    patcher.instead(IdleStore, "isAFK", () => false);
+    patcher.instead(IdleStore, "getIdleSince", () => null);
   }
 
   stripTrackingParams(content) {
-    URL_REGEX.lastIndex = 0;
-    return content.replace(URL_REGEX, (url) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return content.replace(urlRegex, (url) => {
       try {
         const parsed = new URL(url);
         let changed = false;
@@ -443,97 +466,137 @@ module.exports = class Incognito {
   }
 
   stripUrls() {
+    const patcher = this.getPatcher("stripTrackingUrls");
     const { MessageActions } = this.modules;
 
-    if (MessageActions?.sendMessage) {
-      this.api.Patcher.before(
-        MessageActions,
-        "sendMessage",
-        (_, [, message]) => {
-          if (message?.content) {
-            message.content = this.stripTrackingParams(message.content);
-          }
-        },
-      );
-    } else {
-      this.markFailed("stripTrackingUrls");
-      this.api.UI.showToast("Incognito: URL stripping unavailable", {
-        type: "warning",
-      });
+    if (!MessageActions?.sendMessage) {
+      this.handleFailure("stripTrackingUrls", "URL stripping");
+      return;
+    }
+
+    patcher.before(MessageActions, "sendMessage", (_, [, message]) => {
+      if (message?.content) {
+        const original = message.content;
+        message.content = this.stripTrackingParams(message.content);
+        if (message.content !== original) {
+          this.incrementStat("trackingUrlsStripped");
+        }
+      }
+    });
+
+    this.copyHandler = (e) => {
+      const selection = window.getSelection()?.toString();
+      if (!selection) return;
+
+      const sanitized = this.stripTrackingParams(selection);
+      if (sanitized !== selection) {
+        e.preventDefault();
+        e.clipboardData.setData("text/plain", sanitized);
+        this.incrementStat("trackingUrlsStripped");
+      }
+    };
+
+    this.pasteHandler = (e) => {
+      const text = e.clipboardData?.getData("text/plain");
+      if (!text) return;
+
+      const sanitized = this.stripTrackingParams(text);
+      if (sanitized !== text) {
+        e.preventDefault();
+        const target = e.target;
+        if (
+          target.isContentEditable ||
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA"
+        ) {
+          document.execCommand("insertText", false, sanitized);
+          this.incrementStat("trackingUrlsStripped");
+        }
+      }
+    };
+
+    document.addEventListener("copy", this.copyHandler, true);
+    document.addEventListener("paste", this.pasteHandler, true);
+  }
+
+  disableClipboardHandlers() {
+    if (this.copyHandler) {
+      document.removeEventListener("copy", this.copyHandler, true);
+      this.copyHandler = null;
+    }
+    if (this.pasteHandler) {
+      document.removeEventListener("paste", this.pasteHandler, true);
+      this.pasteHandler = null;
     }
   }
 
   spoofLocale() {
+    const patcher = this.getPatcher("spoofLocale");
     const { SuperProperties } = this.modules;
 
-    if (SuperProperties?.getSuperProperties) {
-      this.api.Patcher.after(
-        SuperProperties,
-        "getSuperProperties",
-        (_, __, ret) => {
-          if (ret && typeof ret === "object") {
-            ret.system_locale = "en-US";
-            ret.client_app_state = "focused";
-          }
-          return ret;
-        },
-      );
-
-      this.api.Patcher.after(
-        SuperProperties,
-        "getSuperPropertiesBase64",
-        () => {
-          const props = SuperProperties.getSuperProperties();
-          return btoa(JSON.stringify(props));
-        },
-      );
-    } else {
-      this.markFailed("spoofLocale");
-      this.api.UI.showToast("Incognito: Locale spoofing unavailable", {
-        type: "warning",
-      });
+    if (!SuperProperties?.getSuperProperties) {
+      this.handleFailure("spoofLocale", "Locale spoofing");
       return;
     }
+
+    patcher.after(SuperProperties, "getSuperProperties", (_, __, ret) => {
+      if (ret && typeof ret === "object") {
+        ret.system_locale = "en-US";
+        ret.client_app_state = "focused";
+      }
+      return ret;
+    });
+
+    patcher.after(SuperProperties, "getSuperPropertiesBase64", () => {
+      const props = SuperProperties.getSuperProperties();
+      return btoa(JSON.stringify(props));
+    });
 
     this.stripTrackingHeaders();
   }
 
   stripTrackingHeaders() {
-    const headersToStrip = ["X-Discord-Timezone", "X-Debug-Options"];
+    const patcher = this.getPatcher("spoofLocale");
+    const { TimezoneModule, DebugOptionsStore } = this.modules;
+    let failed = [];
 
-    this.originalFetch = window.fetch;
-    window.fetch = (url, opts = {}) => {
-      if (opts.headers) {
-        if (opts.headers instanceof Headers) {
-          headersToStrip.forEach((h) => opts.headers.delete(h));
-        } else if (typeof opts.headers === "object") {
-          headersToStrip.forEach((h) => delete opts.headers[h]);
-        }
+    if (Array.isArray(TimezoneModule) && TimezoneModule.length === 2) {
+      const [tzMod, tzKey] = TimezoneModule;
+      if (tzMod && tzKey) {
+        patcher.instead(tzMod, tzKey, () => null);
+      } else {
+        failed.push("timezone");
       }
-      return this.originalFetch.call(window, url, opts);
-    };
+    } else {
+      failed.push("timezone");
+    }
 
-    this.originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
-    const stripped = new Set(headersToStrip.map((h) => h.toLowerCase()));
-    const origSetHeader = this.originalSetRequestHeader;
-    XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
-      if (stripped.has(name.toLowerCase())) return;
-      return origSetHeader.call(this, name, value);
-    };
+    if (DebugOptionsStore?.getDebugOptionsHeaderValue) {
+      patcher.instead(
+        DebugOptionsStore,
+        "getDebugOptionsHeaderValue",
+        () => null,
+      );
+    } else {
+      failed.push("debug options");
+    }
+
+    this.handleFailure("spoofLocale", "Header stripping", failed);
   }
 
   silentTyping() {
+    const patcher = this.getPatcher("silentTyping");
     const { TypingModule } = this.modules;
 
-    if (TypingModule?.startTyping && TypingModule?.stopTyping) {
-      this.api.Patcher.instead(TypingModule, "startTyping", () => {});
-      this.api.Patcher.instead(TypingModule, "stopTyping", () => {});
-    } else {
-      this.markFailed("silentTyping");
-      this.api.UI.showToast("Incognito: Silent typing unavailable", {
-        type: "warning",
-      });
+    if (!TypingModule?.startTyping || !TypingModule?.stopTyping) {
+      this.handleFailure("silentTyping", "Silent typing");
+      return;
     }
+
+    patcher.instead(TypingModule, "startTyping", () => {
+      this.incrementStat("typingIndicatorsBlocked");
+    });
+    patcher.instead(TypingModule, "stopTyping", () => {});
   }
 
   randomString(length) {
@@ -560,76 +623,81 @@ module.exports = class Incognito {
   }
 
   anonymiseFiles() {
+    const patcher = this.getPatcher("anonymiseFiles");
     const { Uploader } = this.modules;
 
-    if (Uploader?.prototype?.uploadFiles) {
-      this.api.Patcher.before(
-        Uploader.prototype,
-        "uploadFiles",
-        (_, [files]) => {
-          for (const file of files) {
-            if (file.filename) {
-              file.filename = this.generateFilename(file.filename);
-            }
-          }
-        },
-      );
-    } else {
-      this.markFailed("anonymiseFiles");
-      this.api.UI.showToast("Incognito: File anonymization unavailable", {
-        type: "warning",
-      });
+    if (!Uploader?.prototype?.uploadFiles) {
+      this.handleFailure("anonymiseFiles", "File anonymization");
+      return;
     }
-  }
 
-  antiLog() {
-    const { MessageActions } = this.modules;
-
-    if (MessageActions?.deleteMessage && MessageActions?.editMessage) {
-      this.api.Patcher.instead(
-        MessageActions,
-        "deleteMessage",
-        async (_, [channelId, messageId, ...rest], original) => {
-          try {
-            await MessageActions.editMessage(channelId, messageId, {
-              content: this.randomString(12),
-            });
-            await new Promise((r) => setTimeout(r, 100));
-          } catch {}
-          return original(channelId, messageId, ...rest);
-        },
-      );
-    } else {
-      this.markFailed("antiLog");
-      this.api.UI.showToast("Incognito: Anti-log unavailable", {
-        type: "warning",
-      });
-    }
+    patcher.before(Uploader.prototype, "uploadFiles", (_, [files]) => {
+      if (!files) return;
+      for (const file of files) {
+        if (file?.filename) {
+          file.filename = this.generateFilename(file.filename);
+          this.incrementStat("filesAnonymized");
+        }
+      }
+    });
   }
 
   blockReadReceipts() {
+    const patcher = this.getPatcher("blockReadReceipts");
     const { AckModule } = this.modules;
     let failed = [];
 
     if (AckModule?.ack) {
-      this.api.Patcher.instead(AckModule, "ack", () => {});
+      patcher.instead(AckModule, "ack", () => {
+        this.incrementStat("readReceiptsBlocked");
+      });
     } else {
       failed.push("message ack");
     }
 
-    if (typeof AckModule?.y5 === "function") {
-      this.api.Patcher.instead(AckModule, "y5", () => {});
+    if (AckModule) {
+      let bulkAckKey = null;
+      for (const key of Object.keys(AckModule)) {
+        if (key === "ack") continue;
+        const fn = AckModule[key];
+        if (typeof fn === "function" && fn.toString().includes("BULK_ACK")) {
+          bulkAckKey = key;
+          break;
+        }
+      }
+
+      if (bulkAckKey) {
+        patcher.instead(AckModule, bulkAckKey, () => {});
+      } else {
+        failed.push("bulk ack");
+      }
     } else {
       failed.push("bulk ack");
     }
 
-    if (failed.length === 2) {
-      this.markFailed("blockReadReceipts");
-      this.api.UI.showToast(
-        `Incognito: Read receipt blocking (${failed.join(", ")}) unavailable`,
-        { type: "warning" },
-      );
+    this.handleFailure("blockReadReceipts", "Read receipt blocking", failed);
+  }
+
+  disableFeature(feature) {
+    if (this.patchers[feature]) {
+      this.patchers[feature].unpatchAll();
+      delete this.patchers[feature];
     }
+  }
+
+  enableFeature(id) {
+    const featureMap = {
+      stopAnalytics: () => this.disableAnalytics(),
+      stopSentry: () => this.disableSentry(),
+      stopProcessMonitor: () => this.disableProcessMonitor(),
+      disableIdle: () => this.disableIdle(),
+      stripTrackingUrls: () => this.stripUrls(),
+      spoofLocale: () => this.spoofLocale(),
+      silentTyping: () => this.silentTyping(),
+      anonymiseFiles: () => this.anonymiseFiles(),
+      blockReadReceipts: () => this.blockReadReceipts(),
+    };
+    featureMap[id]?.();
   }
 
   saveSettings() {
@@ -637,113 +705,215 @@ module.exports = class Incognito {
   }
 
   getSettingsPanel() {
-    return this.api.UI.buildSettingsPanel({
-      settings: [
-        {
-          type: "category",
-          id: "tracking",
-          name: "Tracking",
-          collapsible: true,
-          shown: true,
-          settings: [
-            {
-              type: "switch",
-              id: "stopAnalytics",
-              name: "Stop Analytics",
-              note: "Blocks analytics, experiment tracking, live crash reports, discord_rpc, and exit analytics.",
-              value: this.settings.stopAnalytics,
-            },
-            {
-              type: "switch",
-              id: "stopSentry",
-              name: "Stop Sentry",
-              note: "Disables Sentry error and crash reporting.",
-              value: this.settings.stopSentry,
-            },
-            {
-              type: "switch",
-              id: "stopProcessMonitor",
-              name: "Stop Process Monitor",
-              note: "Stops Discord from scanning running processes on your PC to detect games and applications.",
-              value: this.settings.stopProcessMonitor,
-            },
-          ],
-        },
-        {
-          type: "category",
-          id: "privacy",
-          name: "Privacy",
-          collapsible: true,
-          shown: true,
-          settings: [
-            {
-              type: "switch",
-              id: "blockReadReceipts",
-              name: "Block Read Receipts",
-              note: "Prevents Discord from knowing which messages you've read. May cause unread badges to accumulate.",
-              value: this.settings.blockReadReceipts,
-            },
-            {
-              type: "switch",
-              id: "disableIdle",
-              name: "Disable Idle",
-              note: "Prevents Discord and other users from knowing when you're idle or AFK.",
-              value: this.settings.disableIdle,
-            },
-            {
-              type: "switch",
-              id: "stripTrackingUrls",
-              name: "Strip URL Trackers",
-              note: "Removes tracking parameters from links you share, hiding their origin.",
-              value: this.settings.stripTrackingUrls,
-            },
-            {
-              type: "switch",
-              id: "spoofLocale",
-              name: "Spoof Fingerprints",
-              note: "Masks your system locale as en-US, always reports Discord as focused, and strips timezone/debug headers from requests.",
-              value: this.settings.spoofLocale,
-            },
-            {
-              type: "switch",
-              id: "silentTyping",
-              name: "Silent Typing",
-              note: "Hides your typing indicator from other users.",
-              value: this.settings.silentTyping,
-            },
-            {
-              type: "switch",
-              id: "anonymiseFiles",
-              name: "Anonymise File Names",
-              note: "Replaces uploaded file names with random strings to hide original names.",
-              value: this.settings.anonymiseFiles,
-            },
-            {
-              type: "switch",
-              id: "antiLog",
-              name: "Anti Message Log",
-              note: "Edits messages to random text before deleting, defeating message loggers.",
-              value: this.settings.antiLog,
-            },
-          ],
-        },
-      ],
-      onChange: (_, id, value) => {
-        this.settings[id] = value;
-        this.saveSettings();
+    const { React } = BdApi;
+    const plugin = this;
 
-        if (id === "stopProcessMonitor") {
-          if (value) {
-            this.disableProcessMonitor();
-          } else {
-            this.enableProcessMonitor();
-          }
-          return;
-        }
+    const Banner = () => {
+      const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
 
-        this.stop();
-        this.start();
+      React.useEffect(() => {
+        const interval = setInterval(forceUpdate, 1000);
+        return () => clearInterval(interval);
+      }, []);
+
+      const formatNumber = (num) => {
+        if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
+        if (num >= 1000) return (num / 1000).toFixed(1) + "K";
+        return num.toLocaleString();
+      };
+
+      const getTotalBlocked = (stats) => {
+        return STAT_KEYS.reduce((sum, key) => sum + (stats[key] || 0), 0);
+      };
+
+      return React.createElement(
+        "div",
+        { className: "incognito-banner" },
+        React.createElement(
+          "div",
+          { className: "incognito-title" },
+          "Privacy Actions",
+        ),
+        React.createElement(
+          "div",
+          { className: "incognito-stats" },
+          React.createElement(
+            "div",
+            { className: "incognito-stat" },
+            React.createElement(
+              "div",
+              { className: "incognito-value" },
+              formatNumber(getTotalBlocked(plugin.sessionStats)),
+            ),
+            React.createElement(
+              "div",
+              { className: "incognito-label" },
+              "This Session",
+            ),
+          ),
+          React.createElement("div", { className: "incognito-divider" }),
+          React.createElement(
+            "div",
+            { className: "incognito-stat" },
+            React.createElement(
+              "div",
+              { className: "incognito-value" },
+              formatNumber(getTotalBlocked(plugin.stats)),
+            ),
+            React.createElement(
+              "div",
+              { className: "incognito-label" },
+              "All Time",
+            ),
+          ),
+        ),
+      );
+    };
+
+    const banner = React.createElement(Banner);
+
+    const settingToStat = {
+      stopAnalytics: { key: "analyticsBlocked", label: "blocked" },
+      stopSentry: { key: "sentryBlocked", label: "blocked" },
+      blockReadReceipts: { key: "readReceiptsBlocked", label: "blocked" },
+      silentTyping: { key: "typingIndicatorsBlocked", label: "hidden" },
+      stripTrackingUrls: { key: "trackingUrlsStripped", label: "stripped" },
+      disableIdle: { key: "idleSpoofed", label: "spoofed" },
+      anonymiseFiles: { key: "filesAnonymized", label: "renamed" },
+    };
+
+    const settingsConfig = [
+      {
+        id: "stopAnalytics",
+        name: "Stop Analytics",
+        note: "Blocks analytics, experiment tracking, telemetry, and usage metrics.",
       },
+      {
+        id: "stopSentry",
+        name: "Stop Sentry",
+        note: "Disables Sentry error reporting sent when Discord encounters bugs or crashes.",
+      },
+      {
+        id: "stopProcessMonitor",
+        name: "Stop Process Monitor",
+        note: "Stops Discord from scanning running processes on your PC to detect games and applications.",
+      },
+      {
+        id: "blockReadReceipts",
+        name: "Block Read Receipts",
+        note: "Prevents Discord from knowing which messages you've read.",
+      },
+      {
+        id: "disableIdle",
+        name: "Disable Idle",
+        note: "Prevents Discord and other users from knowing when you're idle or AFK, including during voice calls.",
+      },
+      {
+        id: "stripTrackingUrls",
+        name: "Strip URL Trackers",
+        note: "Removes tracking parameters from URLs in messages you send and when copying/pasting.",
+      },
+      {
+        id: "spoofLocale",
+        name: "Spoof Fingerprints",
+        note: "Masks your system locale as en-US, always reports Discord as focused, and strips timezone/debug headers from requests.",
+      },
+      {
+        id: "silentTyping",
+        name: "Silent Typing",
+        note: "Hides your typing indicator from other users.",
+      },
+      {
+        id: "anonymiseFiles",
+        name: "Anonymise File Names",
+        note: "Replaces uploaded file names with random strings to hide original names.",
+      },
+    ];
+
+    const handleChange = (id, value) => {
+      this.settings[id] = value;
+      this.saveSettings();
+
+      if (id === "stopProcessMonitor") {
+        if (value) {
+          this.enableFeature(id);
+        } else {
+          this.disableFeature(id);
+          this.enableProcessMonitor();
+        }
+        return;
+      }
+
+      if (id === "stopSentry") {
+        if (value) {
+          this.enableFeature(id);
+        } else {
+          this.disableFeature(id);
+          this.restoreSentryTransport();
+        }
+        return;
+      }
+
+      if (id === "spoofLocale") {
+        if (value) {
+          this.enableFeature(id);
+        } else {
+          this.disableFeature(id);
+        }
+        return;
+      }
+
+      if (id === "stripTrackingUrls") {
+        if (value) {
+          this.enableFeature(id);
+        } else {
+          this.disableFeature(id);
+          this.disableClipboardHandlers();
+        }
+        return;
+      }
+
+      if (value) {
+        this.enableFeature(id);
+      } else {
+        this.disableFeature(id);
+      }
+    };
+
+    const getName = (config) => {
+      const stat = settingToStat[config.id];
+      if (!stat) return config.name;
+      const count = plugin.sessionStats[stat.key] || 0;
+      return React.createElement(
+        React.Fragment,
+        null,
+        config.name,
+        React.createElement(
+          "span",
+          {
+            style: {
+              fontSize: "12px",
+              fontWeight: "normal",
+              color: "var(--text-muted)",
+              marginLeft: "8px",
+            },
+          },
+          `· ${count.toLocaleString()} ${stat.label}`,
+        ),
+      );
+    };
+
+    const settingsPanel = this.api.UI.buildSettingsPanel({
+      settings: settingsConfig.map((config) => ({
+        type: "switch",
+        id: config.id,
+        name: getName(config),
+        note: config.note,
+        value: this.settings[config.id],
+      })),
+      onChange: (_, id, value) => handleChange(id, value),
     });
+
+    return React.createElement(React.Fragment, null, banner, settingsPanel);
   }
 };

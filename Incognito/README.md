@@ -1,10 +1,10 @@
 <p align="center">
-  <img width="1236" height="736" alt="Incognito" src="https://github.com/user-attachments/assets/6f4b8279-e911-4420-9d96-108919dd28e5" /> 
+  <img width="1236" height="736" alt="Incognito" src="https://github.com/user-attachments/assets/6f4b8279-e911-4420-9d96-108919dd28e5" />
 </p>
 
 > Work in progress
 
-This plugin blocks Discord's telemetry, analytics, error reporting, Sentry crash reporting, process monitoring, and read receipts while also providing privacy features like disabling idle detection, stripping tracking parameters from URLs, spoofing fingerprint data (system locale and app focus state), hiding your typing indicator, anonymising uploaded file names, and defeating message loggers.
+This plugin blocks Discord's telemetry, analytics, experiment tracking, Sentry error reporting, process monitoring, and read receipts while also providing privacy features like disabling idle detection, stripping tracking parameters from URLs and clipboard, spoofing fingerprints (locale, timezone, focus state, debug headers), hiding your typing indicator, and anonymising uploaded file names.
 
 ## Credits
 
