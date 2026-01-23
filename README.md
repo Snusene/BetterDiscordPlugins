@@ -7,6 +7,9 @@
 ## [KeywordPing](./KeywordPing) ![Version][keywordping-version-badge]
 Get notified when messages match your keywords.
 
+## [Incognito](./Incognito) ![Version][incognito-version-badge]
+Blocks Discord's telemetry, analytics, and tracking while providing privacy features.
+
 ## [TwitchPreview](./TwitchPreview) ![Version][twitchpreview-version-badge]
 Every Twitch channel link gets a proper preview with live status, thumbnail, and Twitch styling.
 
@@ -20,6 +23,7 @@ Auto marks channels as read when you enter them so that it scrolls to the last m
 Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
 
 [keywordping-version-badge]: https://img.shields.io/badge/version-2.4.7-brightgreen
+[incognito-version-badge]: https://img.shields.io/badge/version-0.9.5-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-2.3.2-brightgreen
 [prioritydm-version-badge]: https://img.shields.io/badge/version-1.0.5-brightgreen
 [scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.2-brightgreen
