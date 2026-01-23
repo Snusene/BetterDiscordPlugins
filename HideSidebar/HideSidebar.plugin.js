@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
- * @version 1.4.0
+ * @version 1.5.0
  * @website https://github.com/Snusene/BetterDiscordPlugins
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/HideSidebar/HideSidebar.plugin.js
  */
@@ -80,29 +80,22 @@ module.exports = class HideSidebar {
   updateBounds() {
     const sb = this.sidebarEl.getBoundingClientRect();
     const g = this.guildsEl.getBoundingClientRect();
-    this.bounds = {
-      left: Math.min(sb.left, g.left),
-      right: Math.max(sb.right, g.right),
-      top: Math.min(sb.top, g.top),
-      bottom: Math.max(sb.bottom, g.bottom),
-    };
-  }
-
-  isInBounds(x, y) {
-    return (
-      x >= this.bounds.left &&
-      x <= this.bounds.right &&
-      y >= this.bounds.top &&
-      y <= this.bounds.bottom
-    );
+    this.bounds = { right: Math.max(sb.right, g.right) };
   }
 
   addStyles() {
     const css = `
       .${this.sidebarListClass},
       .${this.guildsClass} {
-        transition: width 200ms ease, transform 200ms ease !important;
+        transition: width 200ms ease-out, transform 200ms ease-out !important;
         will-change: width, transform;
+        overflow: hidden !important;
+      }
+
+      .${this.sidebarListClass} > *,
+      .${this.guildsClass} > * {
+        min-width: max-content !important;
+        flex-shrink: 0 !important;
       }
 
       .${this.sidebarListClass}.hidden,
@@ -142,7 +135,7 @@ module.exports = class HideSidebar {
     this.lastMouseX = e.clientX;
     this.lastMouseY = e.clientY;
 
-    if (e.clientX <= 10 && !this.expanded) {
+    if (e.clientX <= 15 && !this.expanded) {
       this.expand();
       return;
     }
@@ -164,7 +157,7 @@ module.exports = class HideSidebar {
       this.updateBounds();
     }
 
-    if (this.isInBounds(this.lastMouseX, this.lastMouseY)) {
+    if (this.lastMouseX <= this.bounds.right) {
       if (this.collapseTimeout) {
         clearTimeout(this.collapseTimeout);
         this.collapseTimeout = null;
@@ -201,7 +194,7 @@ module.exports = class HideSidebar {
     this.expanded = true;
     this.expandTime = Date.now();
 
-    if (!this.sidebarListEl || !this.guildsEl) {
+    if (!this.sidebarListEl?.isConnected || !this.guildsEl?.isConnected) {
       this.cacheElements();
     }
 
