@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Improved previews for Twitch channel links.
- * @version 2.3.1
+ * @version 2.3.2
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/TwitchPreview
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/TwitchPreview/TwitchPreview.plugin.js
  */
@@ -126,9 +126,13 @@ module.exports = class TwitchPreview {
       MessageAccessories.prototype,
       "renderEmbeds",
       (thisObj, _, res) => {
-        if (!res || !Array.isArray(res)) return res;
+        const isWrapped = res && !Array.isArray(res) && Array.isArray(res.props?.children);
+        const source = isWrapped ? res.props.children : res;
 
-        const embeds = [...res];
+        if (!source || !Array.isArray(source)) return res;
+
+        const embeds = [...source];
+        let modified = false;
 
         for (let i = 0; i < embeds.length; i++) {
           const embed =
@@ -142,6 +146,7 @@ module.exports = class TwitchPreview {
           if (!match) continue;
 
           const channel = match[1].toLowerCase();
+          modified = true;
 
           embeds[i] = BdApi.React.createElement(self.TwitchEmbed, {
             channel,
@@ -150,7 +155,8 @@ module.exports = class TwitchPreview {
           });
         }
 
-        return embeds;
+        if (!modified) return res;
+        return isWrapped ? BdApi.React.cloneElement(res, {}, embeds) : embeds;
       },
     );
   }
@@ -319,7 +325,7 @@ module.exports = class TwitchPreview {
 
   async getChannelInfo(channel) {
     try {
-      const response = await fetch("https://gql.twitch.tv/gql", {
+      const response = await BdApi.Net.fetch("https://gql.twitch.tv/gql", {
         method: "POST",
         headers: {
           "Client-Id": "kimne78kx3ncx6brgo4mv6wki5h1ko",
