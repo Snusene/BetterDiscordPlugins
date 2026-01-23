@@ -2,8 +2,8 @@
  * @name KeywordPing
  * @author Snues
  * @authorId 98862725609816064
- * @description Get notified when messages match your keywords. Uses Discord's native notification system, so it looks and sounds just like a regular @mention.
- * @version 2.4.5
+ * @description Get notified when messages match your keywords.
+ * @version 2.4.7
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/KeywordPing/KeywordPing.plugin.js
  */
@@ -68,7 +68,7 @@ module.exports = class KeywordPing {
     this.ChannelStore = BdApi.Webpack.getStore("ChannelStore");
     this.GuildStore = BdApi.Webpack.getStore("GuildStore");
     this.GuildMemberStore = BdApi.Webpack.getStore("GuildMemberStore");
-    this.currentUserId = this.UserStore?.getCurrentUser()?.id;
+    this.currentUserId = this.UserStore.getCurrentUser()?.id;
     this.setupInterceptor();
   }
 
@@ -92,9 +92,7 @@ module.exports = class KeywordPing {
   }
 
   setupInterceptor() {
-    this.Dispatcher = BdApi.Webpack.getByKeys("dispatch", "subscribe");
-    if (!this.Dispatcher) return;
-
+    this.Dispatcher = BdApi.Webpack.getStore("UserStore")._dispatcher;
     this.interceptor = (event) => {
       if (event.type === "MESSAGE_CREATE") {
         this.handleMessage(event);
@@ -127,19 +125,19 @@ module.exports = class KeywordPing {
   }
 
   getSettingsPanel() {
-    const { React } = BdApi;
+    const { React, Hooks } = BdApi;
     const plugin = this;
+    const defaultSettings = { keywords: [], whitelistedUsers: [], guilds: {} };
 
     const SettingsPanel = () => {
+      const settings =
+        Hooks.useData("KeywordPing", "settings") ?? defaultSettings;
       const [keywords, setKeywords] = React.useState(
-        plugin.settings.keywords.join("\n"),
+        settings.keywords.join("\n"),
       );
       const [vipUsers, setVipUsers] = React.useState(
-        plugin.settings.whitelistedUsers.join("\n"),
+        settings.whitelistedUsers.join("\n"),
       );
-      const [guildSettings, setGuildSettings] = React.useState({
-        ...plugin.settings.guilds,
-      });
       const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
       const keywordList = keywords.split("\n").filter((k) => k.trim());
@@ -148,32 +146,33 @@ module.exports = class KeywordPing {
         (k) => !plugin.isValidPattern(k),
       );
 
+      const updateSettings = (newSettings) => {
+        BdApi.Data.save("KeywordPing", "settings", newSettings);
+        plugin.settings = newSettings;
+      };
+
       const handleKeywordsChange = (e) => {
         const val = e.target.value;
         setKeywords(val);
-        plugin.settings.keywords = val.split("\n").filter((k) => k.trim());
+        const newKeywords = val.split("\n").filter((k) => k.trim());
+        updateSettings({ ...settings, keywords: newKeywords });
         plugin.compileKeywords();
-        plugin.saveSettings();
       };
 
       const handleVipUsersChange = (e) => {
         const val = e.target.value;
         setVipUsers(val);
-        plugin.settings.whitelistedUsers = val
-          .split("\n")
-          .filter((k) => k.trim());
-        plugin.saveSettings();
+        const newVipUsers = val.split("\n").filter((k) => k.trim());
+        updateSettings({ ...settings, whitelistedUsers: newVipUsers });
       };
 
       const handleGuildToggle = (guildId) => {
-        const currentEnabled = guildSettings[guildId]?.enabled !== false;
-        const newSettings = {
-          ...guildSettings,
-          [guildId]: { ...guildSettings[guildId], enabled: !currentEnabled },
+        const currentEnabled = settings.guilds[guildId]?.enabled !== false;
+        const newGuilds = {
+          ...settings.guilds,
+          [guildId]: { ...settings.guilds[guildId], enabled: !currentEnabled },
         };
-        setGuildSettings(newSettings);
-        plugin.settings.guilds = newSettings;
-        plugin.saveSettings();
+        updateSettings({ ...settings, guilds: newGuilds });
       };
 
       const guilds = plugin.GuildStore?.getGuilds() || {};
@@ -289,7 +288,7 @@ module.exports = class KeywordPing {
                       {
                         className:
                           "kp-toggle" +
-                          (guildSettings[guild.id]?.enabled !== false
+                          (settings.guilds[guild.id]?.enabled !== false
                             ? " on"
                             : ""),
                         onClick: () => handleGuildToggle(guild.id),
@@ -335,11 +334,11 @@ module.exports = class KeywordPing {
     if (event.optimistic) return;
 
     if (!this.currentUserId) {
-      this.currentUserId = this.UserStore?.getCurrentUser()?.id;
+      this.currentUserId = this.UserStore.getCurrentUser()?.id;
       if (!this.currentUserId) return;
     }
 
-    const channel = this.ChannelStore?.getChannel(message.channel_id);
+    const channel = this.ChannelStore.getChannel(message.channel_id);
     if (!channel?.guild_id) return;
     if (!message.guild_id) message.guild_id = channel.guild_id;
 
@@ -369,7 +368,7 @@ module.exports = class KeywordPing {
     }
 
     if (matched) {
-      const currentUser = this.UserStore?.getCurrentUser();
+      const currentUser = this.UserStore.getCurrentUser();
       if (
         currentUser &&
         !message.mentions?.some((m) => m.id === currentUser.id)
@@ -416,7 +415,7 @@ module.exports = class KeywordPing {
   }
 
   matchesUser(list, author, guildId = null) {
-    const user = this.UserStore?.getUser(author.id) || author;
+    const user = this.UserStore.getUser(author.id) || author;
     const username = (user.username || author.username)?.toLowerCase();
     const displayName = (
       user.globalName ||
