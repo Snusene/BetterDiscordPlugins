@@ -4,7 +4,7 @@
 
 > Work in progress
 
-This plugin blocks Discord's telemetry, analytics, experiment tracking, Sentry error reporting, process monitoring, and read receipts while also providing privacy features like disabling idle detection, stripping tracking parameters from URLs and clipboard, spoofing fingerprints (locale, timezone, focus state, debug headers), hiding your typing indicator, and anonymising uploaded file names.
+This plugin blocks Discord's telemetry, analytics, experiment tracking, Sentry error reporting, process monitoring, usage metrics, and read receipts while also providing privacy features like disabling idle detection, stripping tracking parameters from URLs and clipboard, spoofing fingerprints and hiding BetterDiscord, hiding your typing indicator, and stripping image metadata and anonymising file names.
 
 ## Credits
 
