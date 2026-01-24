@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
- * @version 1.5.0
+ * @version 1.6.0
  * @website https://github.com/Snusene/BetterDiscordPlugins
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/HideSidebar/HideSidebar.plugin.js
  */
@@ -21,9 +21,6 @@ module.exports = class HideSidebar {
     this.lastMouseX = 0;
     this.lastMouseY = 0;
     this.expandTime = 0;
-    this.sidebarEl = null;
-    this.sidebarListEl = null;
-    this.guildsEl = null;
     this.bounds = null;
     this.pending = false;
   }
@@ -45,12 +42,8 @@ module.exports = class HideSidebar {
   stop() {
     this.stopped = true;
     this.api.DOM.removeStyle("HideSidebar");
+    this.api.DOM.removeStyle("HideSidebar-state");
     this.unbindEvents();
-    this.sidebarListEl?.classList.remove("hidden");
-    this.guildsEl?.classList.remove("hidden");
-    this.sidebarEl = null;
-    this.sidebarListEl = null;
-    this.guildsEl = null;
     this.bounds = null;
     this.onMove = null;
     this.onLeave = null;
@@ -62,8 +55,7 @@ module.exports = class HideSidebar {
       const sidebarList = document.querySelector(`.${this.sidebarListClass}`);
       const guilds = document.querySelector(`.${this.guildsClass}`);
       if (sidebarList && guilds) {
-        sidebarList.classList.add("hidden");
-        guilds.classList.add("hidden");
+        this.applyHiddenStyle();
       } else {
         requestAnimationFrame(tryCollapse);
       }
@@ -71,16 +63,13 @@ module.exports = class HideSidebar {
     tryCollapse();
   }
 
-  cacheElements() {
-    this.sidebarEl = document.querySelector(`.${this.sidebarClass}`);
-    this.sidebarListEl = document.querySelector(`.${this.sidebarListClass}`);
-    this.guildsEl = document.querySelector(`.${this.guildsClass}`);
-  }
-
-  updateBounds() {
-    const sb = this.sidebarEl.getBoundingClientRect();
-    const g = this.guildsEl.getBoundingClientRect();
-    this.bounds = { right: Math.max(sb.right, g.right) };
+  getBounds() {
+    const sidebarEl = document.querySelector(`.${this.sidebarClass}`);
+    const guildsEl = document.querySelector(`.${this.guildsClass}`);
+    if (!sidebarEl || !guildsEl) return null;
+    const sb = sidebarEl.getBoundingClientRect();
+    const g = guildsEl.getBoundingClientRect();
+    return { right: Math.max(sb.right, g.right) };
   }
 
   addStyles() {
@@ -97,16 +86,25 @@ module.exports = class HideSidebar {
         min-width: max-content !important;
         flex-shrink: 0 !important;
       }
+    `;
+    this.api.DOM.addStyle("HideSidebar", css);
+  }
 
-      .${this.sidebarListClass}.hidden,
-      .${this.guildsClass}.hidden {
+  applyHiddenStyle() {
+    const hiddenCss = `
+      .${this.sidebarListClass},
+      .${this.guildsClass} {
         width: 0 !important;
         transform: translateX(-50px) !important;
         overflow: hidden !important;
         pointer-events: none !important;
       }
     `;
-    this.api.DOM.addStyle("HideSidebar", css);
+    this.api.DOM.addStyle("HideSidebar-state", hiddenCss);
+  }
+
+  removeHiddenStyle() {
+    this.api.DOM.removeStyle("HideSidebar-state");
   }
 
   bindEvents() {
@@ -154,7 +152,7 @@ module.exports = class HideSidebar {
     if (Date.now() - this.expandTime < 300) return;
 
     if (!this.bounds) {
-      this.updateBounds();
+      this.bounds = this.getBounds();
     }
 
     if (this.lastMouseX <= this.bounds.right) {
@@ -193,13 +191,7 @@ module.exports = class HideSidebar {
     if (this.expanded) return;
     this.expanded = true;
     this.expandTime = Date.now();
-
-    if (!this.sidebarListEl?.isConnected || !this.guildsEl?.isConnected) {
-      this.cacheElements();
-    }
-
-    this.sidebarListEl.classList.remove("hidden");
-    this.guildsEl.classList.remove("hidden");
+    this.removeHiddenStyle();
   }
 
   collapse() {
@@ -212,7 +204,6 @@ module.exports = class HideSidebar {
       this.collapseTimeout = null;
     }
 
-    this.sidebarListEl.classList.add("hidden");
-    this.guildsEl.classList.add("hidden");
+    this.applyHiddenStyle();
   }
 };
