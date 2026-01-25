@@ -1,111 +1,15 @@
 /**
  * @name Incognito
  * @description Go incognito with one click. Stop tracking, hide typing, disable activity, and much more.
- * @version 0.9.6
+ * @version 0.9.69
  * @author Snues
  * @authorId 98862725609816064
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/Incognito/Incognito.plugin.js
  */
 
-const TRACKING_PARAMS = new Set([
-  "utm_source",
-  "utm_medium",
-  "utm_campaign",
-  "utm_term",
-  "utm_content",
-  "utm_id",
-  "utm_referrer",
-  "utm_social",
-  "utm_social-type",
-  "gclid",
-  "gclsrc",
-  "dclid",
-  "gbraid",
-  "wbraid",
-  "_ga",
-  "_gl",
-  "_gac",
-  "fbclid",
-  "fb_action_ids",
-  "fb_action_types",
-  "fb_source",
-  "fb_ref",
-  "msclkid",
-  "twclid",
-  "ttclid",
-  "_ttp",
-  "li_fat_id",
-  "li_tc",
-  "mc_cid",
-  "mc_eid",
-  "_hsenc",
-  "_hsmi",
-  "hsa_acc",
-  "hsa_cam",
-  "hsa_grp",
-  "hsa_ad",
-  "hsa_src",
-  "hsa_tgt",
-  "hsa_kw",
-  "hsa_mt",
-  "hsa_net",
-  "hsa_ver",
-  "mkt_tok",
-  "_kx",
-  "__s",
-  "vero_id",
-  "vero_conv",
-  "sc_cid",
-  "s_kwcid",
-  "igshid",
-  "si",
-  "feature",
-  "pp",
-  "nd",
-  "go",
-  "tag",
-  "ascsubtag",
-  "ref_",
-  "pf_rd_p",
-  "pf_rd_r",
-  "spm",
-  "scm",
-  "pvid",
-  "algo_pvid",
-  "algo_expid",
-  "aff_platform",
-  "aff_trace_key",
-  "terminal_id",
-  "_branch_match_id",
-  "_branch_referrer",
-  "ref",
-  "ref_src",
-  "ref_url",
-  "source",
-  "context",
-  "s",
-  "t",
-  "trk",
-  "clickid",
-  "click_id",
-  "cid",
-  "campaign_id",
-  "ad_id",
-  "adset_id",
-  "creative_id",
-  "placement",
-  "affiliate_id",
-  "aff_id",
-  "oly_anon_id",
-  "oly_enc_id",
-  "rb_clickid",
-  "ns_mchannel",
-  "ns_source",
-  "ns_campaign",
-  "ns_linkname",
-  "ns_fee",
-]);
+// prettier-ignore
+const TRACKING_PARAMS = new Set(["utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","utm_referrer","utm_social","utm_social-type","gclid","gclsrc","dclid","gbraid","wbraid","_ga","_gl","_gac","fbclid","fb_action_ids","fb_action_types","fb_source","fb_ref","msclkid","twclid","ttclid","_ttp","li_fat_id","li_tc","mc_cid","mc_eid","_hsenc","_hsmi","hsa_acc","hsa_cam","hsa_grp","hsa_ad","hsa_src","hsa_tgt","hsa_kw","hsa_mt","hsa_net","hsa_ver","mkt_tok","_kx","__s","vero_id","vero_conv","sc_cid","s_kwcid","igshid","si","feature","pp","nd","go","tag","ascsubtag","ref_","pf_rd_p","pf_rd_r","spm","scm","pvid","algo_pvid","algo_expid","aff_platform","aff_trace_key","terminal_id","_branch_match_id","_branch_referrer","ref","ref_src","ref_url","source","context","s","t","trk","clickid","click_id","cid","campaign_id","ad_id","adset_id","creative_id","placement","affiliate_id","aff_id","oly_anon_id","oly_enc_id","rb_clickid","ns_mchannel","ns_source","ns_campaign","ns_linkname","ns_fee"]);
 
 const STAT_KEYS = [
   "analyticsBlocked",
@@ -253,6 +157,7 @@ module.exports = class Incognito {
     };
     this.failed = new Set(this.api.Data.load("failed") ?? []);
     this.modules = Incognito.getModules();
+    this.initStats();
 
     this.retryFailed();
 
@@ -699,7 +604,7 @@ module.exports = class Incognito {
     if (Array.isArray(ClientModsModule) && ClientModsModule.length === 2) {
       const [modObj, modKey] = ClientModsModule;
       if (modObj && modKey) {
-        patcher.instead(modObj, modKey, () => false);
+        patcher.instead(modObj, modKey, () => []);
       } else {
         failed.push("client mods");
       }
@@ -960,7 +865,7 @@ module.exports = class Incognito {
       {
         id: "stopAnalytics",
         name: "Stop Analytics",
-        note: "Blocks analytics, telemetry, usage metrics, and enforces privacy consents.",
+        note: "Blocks analytics, experiment tracking, telemetry, and usage metrics.",
       },
       {
         id: "stopSentry",
@@ -980,7 +885,7 @@ module.exports = class Incognito {
       {
         id: "disableIdle",
         name: "Disable Idle",
-        note: "Prevents Discord and other users from knowing when you're idle or AFK, including during voice calls.",
+        note: "Prevents Discord and other users from knowing when you're idle or AFK.",
       },
       {
         id: "stripTrackingUrls",
@@ -1000,7 +905,7 @@ module.exports = class Incognito {
       {
         id: "anonymiseFiles",
         name: "Anonymise Files",
-        note: "Randomizes file names and strips metadata (EXIF, GPS, camera info) from images before upload.",
+        note: "Randomizes file names and strips metadata from images before upload.",
       },
     ];
 
