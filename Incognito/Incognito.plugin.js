@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Go incognito with one click. Stop tracking, hide typing, disable activity, and much more.
- * @version 0.9.69
+ * @version 0.9.74
  * @author Snues
  * @authorId 98862725609816064
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
@@ -25,20 +25,22 @@ const STAT_KEYS = [
 
 const CHANGELOG = [
   {
-    title: "New",
-    type: "added",
+    title: "Improved",
+    type: "improved",
     items: [
-      "Image metadata (EXIF, GPS, camera info) now stripped before upload",
+      "Better performance",
+      "Sentry blocking uses Patcher",
+      "Faster image metadata stripping",
+      "Better paste handling",
     ],
   },
   {
-    title: "Recent Changes",
-    type: "improved",
+    title: "Fixes",
+    type: "fixed",
     items: [
-      "Process scanning blocks detection without hiding Spotify and other integrations",
-      "Internal usage metrics blocked from being sent to Discord",
-      "Discord can no longer detect client mods",
-      "Stats banner showing session and all time privacy actions",
+      "URLs in parentheses won't break",
+      "Failed features retry properly",
+      "More random filenames",
     ],
   },
 ];
@@ -109,17 +111,16 @@ module.exports = class Incognito {
       anonymiseFiles: true,
       blockReadReceipts: true,
     };
-    this.initStats();
   }
 
   initStats() {
     const defaultStats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0]));
-    const savedStats = this.api.Data.load("stats");
-    this.stats = savedStats
-      ? { ...defaultStats, ...savedStats }
-      : { ...defaultStats };
+    this.stats = { ...defaultStats, ...(this.api.Data.load("stats") ?? {}) };
     this.sessionStats = { ...defaultStats };
-    this.saveStats = () => this.api.Data.save("stats", this.stats);
+    this.saveStats = BdApi.Utils.debounce(
+      () => this.api.Data.save("stats", this.stats),
+      5000,
+    );
   }
 
   showChangelog() {
@@ -134,11 +135,9 @@ module.exports = class Incognito {
   }
 
   incrementStat(stat) {
-    if (this.stats[stat] !== undefined) {
-      this.stats[stat]++;
-      this.sessionStats[stat]++;
-      this.saveStats();
-    }
+    this.stats[stat]++;
+    this.sessionStats[stat]++;
+    this.saveStats();
   }
 
   getPatcher(feature) {
@@ -194,12 +193,12 @@ module.exports = class Incognito {
     this.patchers = {};
 
     this.restoreConsents();
-    this.restoreSentryTransport();
     this.disableClipboardHandlers();
 
     this.api.DOM.removeStyle();
+    this.saveStats?.cancel?.();
     if (this.stats) {
-      this.saveStats();
+      this.api.Data.save("stats", this.stats);
     }
     this.settings = null;
     this.failed = null;
@@ -222,11 +221,12 @@ module.exports = class Incognito {
       blockReadReceipts: () => this.modules.AckModule?.ack,
     };
 
-    for (const feature of this.failed) {
+    for (const feature of [...this.failed]) {
       const check = featureModules[feature];
       if (check?.()) {
-        this.settings[feature] = true;
         this.failed.delete(feature);
+        this.settings[feature] = true;
+        this.enableFeature(feature);
       }
     }
 
@@ -361,28 +361,18 @@ module.exports = class Incognito {
 
     const transport = client.getTransport?.();
     if (transport?.send) {
-      this.originalSentryTransportSend = transport.send.bind(transport);
-      this.sentryTransport = transport;
-      transport.send = () => {
+      this.getPatcher("stopSentry").instead(transport, "send", () => {
         this.incrementStat("sentryBlocked");
         return Promise.resolve({});
-      };
+      });
     } else {
       this.handleFailure("stopSentry", "Error reporting (transport)");
     }
   }
 
-  restoreSentryTransport() {
-    if (this.originalSentryTransportSend && this.sentryTransport) {
-      this.sentryTransport.send = this.originalSentryTransportSend;
-    }
-    this.originalSentryTransportSend = null;
-    this.sentryTransport = null;
-  }
-
   restoreConsents() {
     if (!this.originalConsents) return;
-    const { ConsentModule } = this.modules ?? {};
+    const { ConsentModule } = this.modules;
     if (!ConsentModule?.U) return;
     const toGrant = [];
     if (this.originalConsents.usage_statistics?.consented)
@@ -459,7 +449,11 @@ module.exports = class Incognito {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     return content.replace(urlRegex, (url) => {
       try {
-        const parsed = new URL(url);
+        const trailingMatch = url.match(/[),.;:!?]+$/);
+        const trailing = trailingMatch ? trailingMatch[0] : "";
+        const cleanInput = trailing ? url.slice(0, -trailing.length) : url;
+
+        const parsed = new URL(cleanInput);
         let changed = false;
 
         for (const param of parsed.searchParams.keys()) {
@@ -474,7 +468,7 @@ module.exports = class Incognito {
           if (cleanUrl.endsWith("?")) {
             cleanUrl = cleanUrl.slice(0, -1);
           }
-          return cleanUrl;
+          return cleanUrl + trailing;
         }
         return url;
       } catch {
@@ -519,18 +513,34 @@ module.exports = class Incognito {
       if (!text) return;
 
       const sanitized = this.stripTrackingParams(text);
-      if (sanitized !== text) {
-        e.preventDefault();
-        const target = e.target;
-        if (
-          target.isContentEditable ||
-          target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA"
-        ) {
-          document.execCommand("insertText", false, sanitized);
-          this.incrementStat("trackingUrlsStripped");
-        }
+      if (sanitized === text) return;
+
+      const target = e.target;
+      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+      if (!isInput && !target.isContentEditable) return;
+
+      e.preventDefault();
+      if (isInput) {
+        const start = target.selectionStart ?? 0;
+        const end = target.selectionEnd ?? 0;
+        target.value =
+          target.value.slice(0, start) + sanitized + target.value.slice(end);
+        target.selectionStart = target.selectionEnd = start + sanitized.length;
+        target.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      } else {
+        const range = window.getSelection().getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(document.createTextNode(sanitized));
+        range.collapse(false);
+        target.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertText",
+            data: sanitized,
+          }),
+        );
       }
+      this.incrementStat("trackingUrlsStripped");
     };
 
     document.addEventListener("copy", this.copyHandler, true);
@@ -558,12 +568,9 @@ module.exports = class Incognito {
     }
 
     patcher.after(SuperProperties, "getSuperProperties", (_, __, ret) => {
-      if (ret && typeof ret === "object") {
-        ret.system_locale = "en-US";
-        ret.client_app_state = "focused";
-        this.incrementStat("fingerprintsSpoofed");
-      }
-      return ret;
+      ret.system_locale = "en-US";
+      ret.client_app_state = "focused";
+      this.incrementStat("fingerprintsSpoofed");
     });
 
     patcher.after(SuperProperties, "getSuperPropertiesBase64", () => {
@@ -580,13 +587,9 @@ module.exports = class Incognito {
       this.modules;
     let failed = [];
 
-    if (Array.isArray(TimezoneModule) && TimezoneModule.length === 2) {
+    if (Array.isArray(TimezoneModule)) {
       const [tzMod, tzKey] = TimezoneModule;
-      if (tzMod && tzKey) {
-        patcher.instead(tzMod, tzKey, () => null);
-      } else {
-        failed.push("timezone");
-      }
+      patcher.instead(tzMod, tzKey, () => null);
     } else {
       failed.push("timezone");
     }
@@ -601,13 +604,9 @@ module.exports = class Incognito {
       failed.push("debug options");
     }
 
-    if (Array.isArray(ClientModsModule) && ClientModsModule.length === 2) {
+    if (Array.isArray(ClientModsModule)) {
       const [modObj, modKey] = ClientModsModule;
-      if (modObj && modKey) {
-        patcher.instead(modObj, modKey, () => []);
-      } else {
-        failed.push("client mods");
-      }
+      patcher.instead(modObj, modKey, () => []);
     } else {
       failed.push("client mods");
     }
@@ -633,9 +632,10 @@ module.exports = class Incognito {
   randomString(length) {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const values = crypto.getRandomValues(new Uint8Array(length));
     let result = "";
     for (let i = 0; i < length; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+      result += chars[values[i] % chars.length];
     }
     return result;
   }
@@ -665,17 +665,13 @@ module.exports = class Incognito {
     let bitmap;
     try {
       bitmap = await createImageBitmap(file);
-      const canvas = document.createElement("canvas");
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
       const ctx = canvas.getContext("2d");
       if (!ctx) return file;
 
       ctx.drawImage(bitmap, 0, 0);
       const quality = file.type === "image/png" ? undefined : 0.92;
-      const blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, file.type, quality),
-      );
+      const blob = await canvas.convertToBlob({ type: file.type, quality });
       if (!blob) return file;
 
       return new File([blob], file.name, {
@@ -698,7 +694,6 @@ module.exports = class Incognito {
       return;
     }
 
-    const self = this;
     patcher.instead(
       Uploader.prototype,
       "uploadFiles",
@@ -706,11 +701,11 @@ module.exports = class Incognito {
         if (files) {
           for (const fileObj of files) {
             if (fileObj?.filename) {
-              fileObj.filename = self.generateFilename(fileObj.filename);
-              self.incrementStat("filesAnonymized");
+              fileObj.filename = this.generateFilename(fileObj.filename);
+              this.incrementStat("filesAnonymized");
             }
             if (fileObj?.file) {
-              fileObj.file = await self.stripImageMetadata(fileObj.file);
+              fileObj.file = await this.stripImageMetadata(fileObj.file);
             }
           }
         }
@@ -919,25 +914,6 @@ module.exports = class Incognito {
         } else {
           this.disableFeature(id);
           this.enableProcessMonitor();
-        }
-        return;
-      }
-
-      if (id === "stopSentry") {
-        if (value) {
-          this.enableFeature(id);
-        } else {
-          this.disableFeature(id);
-          this.restoreSentryTransport();
-        }
-        return;
-      }
-
-      if (id === "spoofLocale") {
-        if (value) {
-          this.enableFeature(id);
-        } else {
-          this.disableFeature(id);
         }
         return;
       }
