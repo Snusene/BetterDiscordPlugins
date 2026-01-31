@@ -1,7 +1,7 @@
 /**
  * @name Incognito
- * @description Go incognito with one click. Stop tracking, hide typing, disable activity, and much more.
- * @version 0.9.74
+ * @description Go incognito. Stop tracking, hide typing, spoof activity, and much more.
+ * @version 0.9.78
  * @author Snues
  * @authorId 98862725609816064
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
@@ -9,7 +9,7 @@
  */
 
 // prettier-ignore
-const TRACKING_PARAMS = new Set(["utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","utm_referrer","utm_social","utm_social-type","gclid","gclsrc","dclid","gbraid","wbraid","_ga","_gl","_gac","fbclid","fb_action_ids","fb_action_types","fb_source","fb_ref","msclkid","twclid","ttclid","_ttp","li_fat_id","li_tc","mc_cid","mc_eid","_hsenc","_hsmi","hsa_acc","hsa_cam","hsa_grp","hsa_ad","hsa_src","hsa_tgt","hsa_kw","hsa_mt","hsa_net","hsa_ver","mkt_tok","_kx","__s","vero_id","vero_conv","sc_cid","s_kwcid","igshid","si","feature","pp","nd","go","tag","ascsubtag","ref_","pf_rd_p","pf_rd_r","spm","scm","pvid","algo_pvid","algo_expid","aff_platform","aff_trace_key","terminal_id","_branch_match_id","_branch_referrer","ref","ref_src","ref_url","source","context","s","t","trk","clickid","click_id","cid","campaign_id","ad_id","adset_id","creative_id","placement","affiliate_id","aff_id","oly_anon_id","oly_enc_id","rb_clickid","ns_mchannel","ns_source","ns_campaign","ns_linkname","ns_fee"]);
+const TRACKING_PARAMS = new Set(["utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","utm_referrer","utm_social","utm_social-type","gclid","gclsrc","dclid","gbraid","wbraid","_ga","_gl","_gac","fbclid","fb_action_ids","fb_action_types","fb_source","fb_ref","msclkid","twclid","ttclid","_ttp","li_fat_id","li_tc","mc_cid","mc_eid","_hsenc","_hsmi","hsa_acc","hsa_cam","hsa_grp","hsa_ad","hsa_src","hsa_tgt","hsa_kw","hsa_mt","hsa_net","hsa_ver","mkt_tok","_kx","__s","vero_id","vero_conv","sc_cid","s_kwcid","igshid","si","feature","pp","nd","go","tag","ascsubtag","ref_","pf_rd_p","pf_rd_r","spm","scm","pvid","algo_pvid","algo_expid","aff_platform","aff_trace_key","terminal_id","_branch_match_id","_branch_referrer","ref","ref_src","ref_url","source","context","s","t","trk","clickid","click_id","cid","campaign_id","ad_id","adset_id","creative_id","placement","affiliate_id","aff_id","oly_anon_id","oly_enc_id","rb_clickid","ns_mchannel","ns_source","ns_campaign","ns_linkname","ns_fee","yclid","zanpid","irclickid","ranMID","ranEAID","ranSiteID","vgo_ee","sref","ito","wickedid","ncid","pd_rd_w","pd_rd_wg","pd_rd_i","qid","sr","keywords","crid","sprefix","_encoding","psc","mbid","xtor","_openstat","smid","smtyp","dm_i","elqTrack","elqTrackId","mkwid","pcrid","pkw","pmt","slid"]);
 
 const STAT_KEYS = [
   "analyticsBlocked",
@@ -19,29 +19,28 @@ const STAT_KEYS = [
   "trackingUrlsStripped",
   "idleSpoofed",
   "filesAnonymized",
-  "processScansBlocked",
   "fingerprintsSpoofed",
 ];
 
 const CHANGELOG = [
   {
+    title: "New",
+    type: "added",
+    items: ["Added Hide Client Mods as a new setting"],
+  },
+  {
     title: "Improved",
     type: "improved",
     items: [
-      "Better performance",
-      "Sentry blocking uses Patcher",
-      "Faster image metadata stripping",
-      "Better paste handling",
+      "Stronger process scanning protection",
+      "Reorganized code for easier maintenance",
+      "Blocks Nitro premium-marketing analytics",
     ],
   },
   {
     title: "Fixes",
     type: "fixed",
-    items: [
-      "URLs in parentheses won't break",
-      "Failed features retry properly",
-      "More random filenames",
-    ],
+    items: ["Fixed memory leaks"],
   },
 ];
 
@@ -56,7 +55,6 @@ module.exports = class Incognito {
       NativeModule: BdApi.Webpack.getByKeys("getDiscordUtils"),
       CrashReporter: BdApi.Webpack.getModule((m) => m?.submitLiveCrashReport),
       TypingModule: BdApi.Webpack.getByKeys("startTyping", "stopTyping"),
-      RunningGameStore: BdApi.Webpack.getStore("RunningGameStore"),
       ActivityTrackingStore: BdApi.Webpack.getStore("ActivityTrackingStore"),
       IdleStore: BdApi.Webpack.getStore("IdleStore"),
       MessageActions: BdApi.Webpack.getByKeys("sendMessage", "editMessage"),
@@ -83,6 +81,7 @@ module.exports = class Incognito {
       ConsentModule: BdApi.Webpack.getBySource("SETTINGS_CONSENT", {
         searchExports: true,
       }),
+      APIModule: BdApi.Webpack.getModule((m) => m?.Bo?.post),
       ClientModsModule: (() => {
         const mod = BdApi.Webpack.getBySource(".BetterDiscord", {
           searchExports: true,
@@ -102,14 +101,15 @@ module.exports = class Incognito {
     this.patchers = {};
     this.defaultSettings = {
       stopAnalytics: true,
-      stopSentry: true,
-      stopProcessMonitor: true,
-      disableIdle: true,
-      stripTrackingUrls: true,
-      spoofLocale: true,
-      silentTyping: true,
-      anonymiseFiles: true,
+      blockErrorReporting: true,
+      blockProcessScanning: true,
       blockReadReceipts: true,
+      disableIdle: true,
+      silentTyping: true,
+      spoofFingerprints: true,
+      hideClientMods: true,
+      stripUrlTrackers: true,
+      anonymiseFiles: true,
     };
   }
 
@@ -160,15 +160,16 @@ module.exports = class Incognito {
 
     this.retryFailed();
 
-    if (this.settings.stopAnalytics) this.disableAnalytics();
-    if (this.settings.stopSentry) this.disableSentry();
-    if (this.settings.stopProcessMonitor) this.disableProcessMonitor();
-    if (this.settings.disableIdle) this.disableIdle();
-    if (this.settings.stripTrackingUrls) this.stripUrls();
-    if (this.settings.spoofLocale) this.spoofLocale();
-    if (this.settings.silentTyping) this.silentTyping();
-    if (this.settings.anonymiseFiles) this.anonymiseFiles();
+    if (this.settings.stopAnalytics) this.stopAnalytics();
+    if (this.settings.blockErrorReporting) this.blockErrorReporting();
+    if (this.settings.blockProcessScanning) this.blockProcessScanning();
     if (this.settings.blockReadReceipts) this.blockReadReceipts();
+    if (this.settings.disableIdle) this.disableIdle();
+    if (this.settings.silentTyping) this.silentTyping();
+    if (this.settings.spoofFingerprints) this.spoofFingerprints();
+    if (this.settings.hideClientMods) this.hideClientMods();
+    if (this.settings.stripUrlTrackers) this.stripUrlTrackers();
+    if (this.settings.anonymiseFiles) this.anonymiseFiles();
 
     this.injectStyles();
     this.showChangelog();
@@ -192,8 +193,8 @@ module.exports = class Incognito {
     }
     this.patchers = {};
 
-    this.restoreConsents();
     this.disableClipboardHandlers();
+    Incognito._moduleCache = null;
 
     this.api.DOM.removeStyle();
     this.saveStats?.cancel?.();
@@ -211,14 +212,19 @@ module.exports = class Incognito {
   retryFailed() {
     const featureModules = {
       stopAnalytics: () => this.modules.Analytics,
-      stopSentry: () => window.DiscordSentry?.getClient?.(),
-      stopProcessMonitor: () => this.modules.NativeModule,
-      disableIdle: () => this.modules.IdleStore,
-      stripTrackingUrls: () => this.modules.MessageActions?.sendMessage,
-      spoofLocale: () => this.modules.SuperProperties?.getSuperProperties,
-      silentTyping: () => this.modules.TypingModule?.startTyping,
-      anonymiseFiles: () => this.modules.Uploader,
+      blockErrorReporting: () =>
+        window.DiscordSentry?.getClient?.() || this.modules.CrashReporter,
+      blockProcessScanning: () =>
+        this.modules.NativeModule?.getDiscordUtils?.(),
       blockReadReceipts: () => this.modules.AckModule?.ack,
+      disableIdle: () => this.modules.IdleStore,
+      silentTyping: () => this.modules.TypingModule?.startTyping,
+      spoofFingerprints: () =>
+        this.modules.SuperProperties?.getSuperProperties ||
+        this.modules.TimezoneModule,
+      hideClientMods: () => this.modules.ClientModsModule,
+      stripUrlTrackers: () => this.modules.MessageActions?.sendMessage,
+      anonymiseFiles: () => this.modules.Uploader,
     };
 
     for (const feature of [...this.failed]) {
@@ -241,18 +247,17 @@ module.exports = class Incognito {
     this.api.Data.save("failed", [...this.failed]);
   }
 
-  handleFailure(feature, description, failed = null) {
+  handleFailure(feature, failed = null) {
     if (failed !== null && failed.length === 0) return;
     this.markFailed(feature);
-    const msg = failed?.length
-      ? `${description} (${failed.join(", ")})`
-      : description;
-    this.api.UI.showToast(`Incognito: ${msg} unavailable`, { type: "warning" });
+    this.api.UI.showToast(`Incognito: ${feature} unavailable`, {
+      type: "warning",
+    });
   }
 
-  disableAnalytics() {
+  stopAnalytics() {
     const patcher = this.getPatcher("stopAnalytics");
-    const { Analytics, NativeModule, CrashReporter } = this.modules;
+    const { Analytics, NativeModule } = this.modules;
     let failed = [];
 
     if (!Analytics) {
@@ -277,12 +282,6 @@ module.exports = class Incognito {
       } else {
         failed.push("debug logs");
       }
-    }
-
-    if (CrashReporter?.submitLiveCrashReport) {
-      patcher.instead(CrashReporter, "submitLiveCrashReport", () => {});
-    } else {
-      failed.push("crash reports");
     }
 
     if (NativeModule) {
@@ -316,7 +315,8 @@ module.exports = class Incognito {
       failed.push("metrics");
     }
 
-    const { ConsentStore, ClipsStore, ConsentModule } = this.modules;
+    const { ConsentStore, ClipsStore, ConsentModule, DebugOptionsStore } =
+      this.modules;
     if (ConsentStore?.hasConsented) {
       patcher.instead(ConsentStore, "hasConsented", () => false);
     } else {
@@ -333,10 +333,19 @@ module.exports = class Incognito {
       failed.push("voice clips");
     }
 
+    if (DebugOptionsStore?.getDebugOptionsHeaderValue) {
+      patcher.instead(
+        DebugOptionsStore,
+        "getDebugOptionsHeaderValue",
+        () => null,
+      );
+    } else {
+      failed.push("debug options");
+    }
+
     if (ConsentModule?.Q && ConsentModule?.U) {
       ConsentModule.Q()
         .then((consents) => {
-          this.originalConsents = consents;
           const toRevoke = [];
           if (consents.usage_statistics?.consented)
             toRevoke.push("usage_statistics");
@@ -349,69 +358,92 @@ module.exports = class Incognito {
         .catch(() => {});
     }
 
-    this.handleFailure("stopAnalytics", "Telemetry blocking", failed);
-  }
+    const { APIModule } = this.modules;
+    const isPremiumMarketing = (url) =>
+      typeof url === "string" && /\/api\/v\d+\/premium-marketing/i.test(url);
 
-  disableSentry() {
-    const client = window.DiscordSentry?.getClient?.();
-    if (!client) {
-      this.handleFailure("stopSentry", "Error reporting blocking");
-      return;
-    }
-
-    const transport = client.getTransport?.();
-    if (transport?.send) {
-      this.getPatcher("stopSentry").instead(transport, "send", () => {
-        this.incrementStat("sentryBlocked");
-        return Promise.resolve({});
+    if (APIModule?.Bo?.post) {
+      patcher.instead(APIModule.Bo, "post", (_, [options], original) => {
+        if (isPremiumMarketing(options?.url)) {
+          this.incrementStat("analyticsBlocked");
+          return Promise.resolve({ ok: true, body: [] });
+        }
+        return original(options);
       });
     } else {
-      this.handleFailure("stopSentry", "Error reporting (transport)");
+      failed.push("premium-marketing");
     }
+
+    this.handleFailure("stopAnalytics", failed);
   }
 
-  restoreConsents() {
-    if (!this.originalConsents) return;
-    const { ConsentModule } = this.modules;
-    if (!ConsentModule?.U) return;
-    const toGrant = [];
-    if (this.originalConsents.usage_statistics?.consented)
-      toGrant.push("usage_statistics");
-    if (this.originalConsents.personalization?.consented)
-      toGrant.push("personalization");
-    if (toGrant.length > 0) {
-      ConsentModule.U(toGrant, []).catch(() => {});
-    }
-    this.originalConsents = null;
-  }
-
-  disableProcessMonitor() {
-    const patcher = this.getPatcher("stopProcessMonitor");
-    const { NativeModule, RunningGameStore } = this.modules;
+  blockErrorReporting() {
+    const patcher = this.getPatcher("blockErrorReporting");
+    const { CrashReporter } = this.modules;
     let failed = [];
 
-    const DiscordUtils = NativeModule?.getDiscordUtils();
-    if (DiscordUtils?.setObservedGamesCallback) {
-      DiscordUtils.setObservedGamesCallback([], () => {});
-      patcher.instead(DiscordUtils, "setObservedGamesCallback", () => {});
+    const client = window.DiscordSentry?.getClient?.();
+    if (!client) {
+      failed.push("sentry");
     } else {
-      failed.push("process callback");
+      const transport = client.getTransport?.();
+      if (transport?.send) {
+        patcher.instead(transport, "send", () => {
+          this.incrementStat("sentryBlocked");
+          return Promise.resolve({});
+        });
+      } else {
+        failed.push("sentry transport");
+      }
     }
 
-    if (RunningGameStore) {
-      patcher.instead(RunningGameStore, "getVisibleGame", () => null);
-      patcher.instead(RunningGameStore, "getRunningGames", () => {
-        this.incrementStat("processScansBlocked");
-        return [];
-      });
-      patcher.instead(RunningGameStore, "getVisibleRunningGames", () => []);
-      patcher.instead(RunningGameStore, "getCandidateGames", () => []);
-      patcher.instead(RunningGameStore, "isDetectionEnabled", () => false);
+    if (CrashReporter?.submitLiveCrashReport) {
+      patcher.instead(CrashReporter, "submitLiveCrashReport", () => {});
     } else {
-      failed.push("game store");
+      failed.push("crash reports");
     }
 
-    this.handleFailure("stopProcessMonitor", "Process monitoring", failed);
+    this.handleFailure("blockErrorReporting", failed);
+  }
+
+  blockProcessScanning() {
+    const patcher = this.getPatcher("blockProcessScanning");
+    const { NativeModule } = this.modules;
+    let failed = [];
+
+    const DiscordUtils = NativeModule?.getDiscordUtils?.();
+    if (DiscordUtils) {
+      if (DiscordUtils.setObservedGamesCallback) {
+        DiscordUtils.setObservedGamesCallback([], () => {});
+        patcher.instead(DiscordUtils, "setObservedGamesCallback", () => {});
+      } else {
+        failed.push("observedGames");
+      }
+
+      if (DiscordUtils.setObservedGamesCallback2) {
+        DiscordUtils.setObservedGamesCallback2([], () => {});
+        patcher.instead(DiscordUtils, "setObservedGamesCallback2", () => {});
+      } else {
+        failed.push("observedGames2");
+      }
+
+      if (DiscordUtils.setGameDetectionCallback) {
+        DiscordUtils.setGameDetectionCallback(() => {});
+        patcher.instead(DiscordUtils, "setGameDetectionCallback", () => {});
+      } else {
+        failed.push("gameDetection");
+      }
+
+      if (DiscordUtils.setCandidateGamesCallback) {
+        DiscordUtils.setCandidateGamesCallback(() => {});
+        patcher.instead(DiscordUtils, "setCandidateGamesCallback", () => {});
+      } else {
+        failed.push("candidateGames");
+      }
+      this.handleFailure("blockProcessScanning", failed);
+    } else {
+      this.handleFailure("blockProcessScanning");
+    }
   }
 
   enableProcessMonitor() {
@@ -426,12 +458,48 @@ module.exports = class Incognito {
     );
   }
 
+  blockReadReceipts() {
+    const patcher = this.getPatcher("blockReadReceipts");
+    const { AckModule } = this.modules;
+    let failed = [];
+
+    if (AckModule?.ack) {
+      patcher.instead(AckModule, "ack", () => {
+        this.incrementStat("readReceiptsBlocked");
+      });
+    } else {
+      failed.push("message ack");
+    }
+
+    if (AckModule) {
+      let bulkAckKey = null;
+      for (const key of Object.keys(AckModule)) {
+        if (key === "ack") continue;
+        const fn = AckModule[key];
+        if (typeof fn === "function" && fn.toString().includes("BULK_ACK")) {
+          bulkAckKey = key;
+          break;
+        }
+      }
+
+      if (bulkAckKey) {
+        patcher.instead(AckModule, bulkAckKey, () => {});
+      } else {
+        failed.push("bulk ack");
+      }
+    } else {
+      failed.push("bulk ack");
+    }
+
+    this.handleFailure("blockReadReceipts", failed);
+  }
+
   disableIdle() {
     const patcher = this.getPatcher("disableIdle");
     const { IdleStore } = this.modules;
 
     if (!IdleStore) {
-      this.handleFailure("disableIdle", "Idle blocking");
+      this.handleFailure("disableIdle");
       return;
     }
 
@@ -443,6 +511,64 @@ module.exports = class Incognito {
     });
     patcher.instead(IdleStore, "isAFK", () => false);
     patcher.instead(IdleStore, "getIdleSince", () => null);
+  }
+
+  silentTyping() {
+    const patcher = this.getPatcher("silentTyping");
+    const { TypingModule } = this.modules;
+
+    if (!TypingModule?.startTyping || !TypingModule?.stopTyping) {
+      this.handleFailure("silentTyping");
+      return;
+    }
+
+    patcher.instead(TypingModule, "startTyping", () => {
+      this.incrementStat("typingIndicatorsBlocked");
+    });
+    patcher.instead(TypingModule, "stopTyping", () => {});
+  }
+
+  spoofFingerprints() {
+    const patcher = this.getPatcher("spoofFingerprints");
+    const { SuperProperties, TimezoneModule } = this.modules;
+    let failed = [];
+
+    if (SuperProperties?.getSuperProperties) {
+      patcher.after(SuperProperties, "getSuperProperties", (_, __, ret) => {
+        ret.system_locale = "en-US";
+        ret.client_app_state = "focused";
+        this.incrementStat("fingerprintsSpoofed");
+      });
+
+      patcher.after(SuperProperties, "getSuperPropertiesBase64", () => {
+        const props = SuperProperties.getSuperProperties();
+        return btoa(JSON.stringify(props));
+      });
+    } else {
+      failed.push("locale");
+    }
+
+    if (Array.isArray(TimezoneModule)) {
+      const [tzMod, tzKey] = TimezoneModule;
+      patcher.instead(tzMod, tzKey, () => null);
+    } else {
+      failed.push("timezone");
+    }
+
+    this.handleFailure("spoofFingerprints", failed);
+  }
+
+  hideClientMods() {
+    const patcher = this.getPatcher("hideClientMods");
+    const { ClientModsModule } = this.modules;
+
+    if (!Array.isArray(ClientModsModule)) {
+      this.handleFailure("hideClientMods");
+      return;
+    }
+
+    const [modObj, modKey] = ClientModsModule;
+    patcher.instead(modObj, modKey, () => []);
   }
 
   stripTrackingParams(content) {
@@ -477,12 +603,12 @@ module.exports = class Incognito {
     });
   }
 
-  stripUrls() {
-    const patcher = this.getPatcher("stripTrackingUrls");
+  stripUrlTrackers() {
+    const patcher = this.getPatcher("stripUrlTrackers");
     const { MessageActions } = this.modules;
 
     if (!MessageActions?.sendMessage) {
-      this.handleFailure("stripTrackingUrls", "URL stripping");
+      this.handleFailure("stripUrlTrackers");
       return;
     }
 
@@ -516,7 +642,8 @@ module.exports = class Incognito {
       if (sanitized === text) return;
 
       const target = e.target;
-      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+      const isInput =
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA";
       if (!isInput && !target.isContentEditable) return;
 
       e.preventDefault();
@@ -556,77 +683,6 @@ module.exports = class Incognito {
       document.removeEventListener("paste", this.pasteHandler, true);
       this.pasteHandler = null;
     }
-  }
-
-  spoofLocale() {
-    const patcher = this.getPatcher("spoofLocale");
-    const { SuperProperties } = this.modules;
-
-    if (!SuperProperties?.getSuperProperties) {
-      this.handleFailure("spoofLocale", "Locale spoofing");
-      return;
-    }
-
-    patcher.after(SuperProperties, "getSuperProperties", (_, __, ret) => {
-      ret.system_locale = "en-US";
-      ret.client_app_state = "focused";
-      this.incrementStat("fingerprintsSpoofed");
-    });
-
-    patcher.after(SuperProperties, "getSuperPropertiesBase64", () => {
-      const props = SuperProperties.getSuperProperties();
-      return btoa(JSON.stringify(props));
-    });
-
-    this.stripTrackingHeaders();
-  }
-
-  stripTrackingHeaders() {
-    const patcher = this.getPatcher("spoofLocale");
-    const { TimezoneModule, DebugOptionsStore, ClientModsModule } =
-      this.modules;
-    let failed = [];
-
-    if (Array.isArray(TimezoneModule)) {
-      const [tzMod, tzKey] = TimezoneModule;
-      patcher.instead(tzMod, tzKey, () => null);
-    } else {
-      failed.push("timezone");
-    }
-
-    if (DebugOptionsStore?.getDebugOptionsHeaderValue) {
-      patcher.instead(
-        DebugOptionsStore,
-        "getDebugOptionsHeaderValue",
-        () => null,
-      );
-    } else {
-      failed.push("debug options");
-    }
-
-    if (Array.isArray(ClientModsModule)) {
-      const [modObj, modKey] = ClientModsModule;
-      patcher.instead(modObj, modKey, () => []);
-    } else {
-      failed.push("client mods");
-    }
-
-    this.handleFailure("spoofLocale", "Header stripping", failed);
-  }
-
-  silentTyping() {
-    const patcher = this.getPatcher("silentTyping");
-    const { TypingModule } = this.modules;
-
-    if (!TypingModule?.startTyping || !TypingModule?.stopTyping) {
-      this.handleFailure("silentTyping", "Silent typing");
-      return;
-    }
-
-    patcher.instead(TypingModule, "startTyping", () => {
-      this.incrementStat("typingIndicatorsBlocked");
-    });
-    patcher.instead(TypingModule, "stopTyping", () => {});
   }
 
   randomString(length) {
@@ -690,7 +746,7 @@ module.exports = class Incognito {
     const { Uploader } = this.modules;
 
     if (!Uploader?.prototype?.uploadFiles) {
-      this.handleFailure("anonymiseFiles", "File anonymization");
+      this.handleFailure("anonymiseFiles");
       return;
     }
 
@@ -714,42 +770,6 @@ module.exports = class Incognito {
     );
   }
 
-  blockReadReceipts() {
-    const patcher = this.getPatcher("blockReadReceipts");
-    const { AckModule } = this.modules;
-    let failed = [];
-
-    if (AckModule?.ack) {
-      patcher.instead(AckModule, "ack", () => {
-        this.incrementStat("readReceiptsBlocked");
-      });
-    } else {
-      failed.push("message ack");
-    }
-
-    if (AckModule) {
-      let bulkAckKey = null;
-      for (const key of Object.keys(AckModule)) {
-        if (key === "ack") continue;
-        const fn = AckModule[key];
-        if (typeof fn === "function" && fn.toString().includes("BULK_ACK")) {
-          bulkAckKey = key;
-          break;
-        }
-      }
-
-      if (bulkAckKey) {
-        patcher.instead(AckModule, bulkAckKey, () => {});
-      } else {
-        failed.push("bulk ack");
-      }
-    } else {
-      failed.push("bulk ack");
-    }
-
-    this.handleFailure("blockReadReceipts", "Read receipt blocking", failed);
-  }
-
   disableFeature(feature) {
     if (this.patchers[feature]) {
       this.patchers[feature].unpatchAll();
@@ -759,15 +779,16 @@ module.exports = class Incognito {
 
   enableFeature(id) {
     const featureMap = {
-      stopAnalytics: () => this.disableAnalytics(),
-      stopSentry: () => this.disableSentry(),
-      stopProcessMonitor: () => this.disableProcessMonitor(),
-      disableIdle: () => this.disableIdle(),
-      stripTrackingUrls: () => this.stripUrls(),
-      spoofLocale: () => this.spoofLocale(),
-      silentTyping: () => this.silentTyping(),
-      anonymiseFiles: () => this.anonymiseFiles(),
+      stopAnalytics: () => this.stopAnalytics(),
+      blockErrorReporting: () => this.blockErrorReporting(),
+      blockProcessScanning: () => this.blockProcessScanning(),
       blockReadReceipts: () => this.blockReadReceipts(),
+      disableIdle: () => this.disableIdle(),
+      silentTyping: () => this.silentTyping(),
+      spoofFingerprints: () => this.spoofFingerprints(),
+      hideClientMods: () => this.hideClientMods(),
+      stripUrlTrackers: () => this.stripUrlTrackers(),
+      anonymiseFiles: () => this.anonymiseFiles(),
     };
     featureMap[id]?.();
   }
@@ -846,13 +867,12 @@ module.exports = class Incognito {
 
     const settingToStat = {
       stopAnalytics: { key: "analyticsBlocked", label: "blocked" },
-      stopSentry: { key: "sentryBlocked", label: "blocked" },
-      stopProcessMonitor: { key: "processScansBlocked", label: "blocked" },
+      blockErrorReporting: { key: "sentryBlocked", label: "blocked" },
       blockReadReceipts: { key: "readReceiptsBlocked", label: "blocked" },
-      silentTyping: { key: "typingIndicatorsBlocked", label: "hidden" },
-      stripTrackingUrls: { key: "trackingUrlsStripped", label: "stripped" },
       disableIdle: { key: "idleSpoofed", label: "spoofed" },
-      spoofLocale: { key: "fingerprintsSpoofed", label: "spoofed" },
+      silentTyping: { key: "typingIndicatorsBlocked", label: "hidden" },
+      spoofFingerprints: { key: "fingerprintsSpoofed", label: "spoofed" },
+      stripUrlTrackers: { key: "trackingUrlsStripped", label: "stripped" },
       anonymiseFiles: { key: "filesAnonymized", label: "anonymized" },
     };
 
@@ -860,15 +880,15 @@ module.exports = class Incognito {
       {
         id: "stopAnalytics",
         name: "Stop Analytics",
-        note: "Blocks analytics, experiment tracking, telemetry, and usage metrics.",
+        note: "Blocks telemetry, debug logs, activity tracking, usage metrics, and Nitro marketing.",
       },
       {
-        id: "stopSentry",
-        name: "Stop Sentry",
-        note: "Disables Sentry error reporting sent when Discord encounters bugs or crashes.",
+        id: "blockErrorReporting",
+        name: "Block Error Reporting",
+        note: "Prevents Sentry error reports and crash reports from being sent to Discord.",
       },
       {
-        id: "stopProcessMonitor",
+        id: "blockProcessScanning",
         name: "Block Process Scanning",
         note: "Prevents Discord from seeing any processes running on your PC.",
       },
@@ -883,19 +903,24 @@ module.exports = class Incognito {
         note: "Prevents Discord and other users from knowing when you're idle or AFK.",
       },
       {
-        id: "stripTrackingUrls",
-        name: "Strip URL Trackers",
-        note: "Removes tracking parameters from URLs in messages you send and when copying/pasting.",
-      },
-      {
-        id: "spoofLocale",
-        name: "Spoof Fingerprints",
-        note: "Spoofs locale/focus state, hides timezone, debug headers, and BetterDiscord.",
-      },
-      {
         id: "silentTyping",
         name: "Silent Typing",
         note: "Hides your typing indicator from other users.",
+      },
+      {
+        id: "spoofFingerprints",
+        name: "Spoof Fingerprints",
+        note: "Spoofs your locale, timezone, and Discord's focus state.",
+      },
+      {
+        id: "hideClientMods",
+        name: "Hide Client Mods",
+        note: "Prevents Discord from detecting BetterDiscord and other client mods.",
+      },
+      {
+        id: "stripUrlTrackers",
+        name: "Strip URL Trackers",
+        note: "Removes tracking parameters from URLs in messages you send and when copying/pasting.",
       },
       {
         id: "anonymiseFiles",
@@ -908,7 +933,7 @@ module.exports = class Incognito {
       this.settings[id] = value;
       this.saveSettings();
 
-      if (id === "stopProcessMonitor") {
+      if (id === "blockProcessScanning") {
         if (value) {
           this.enableFeature(id);
         } else {
@@ -918,7 +943,7 @@ module.exports = class Incognito {
         return;
       }
 
-      if (id === "stripTrackingUrls") {
+      if (id === "stripUrlTrackers") {
         if (value) {
           this.enableFeature(id);
         } else {
