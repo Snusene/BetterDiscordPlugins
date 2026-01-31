@@ -8,7 +8,7 @@ This plugin blocks Discord's telemetry, analytics, experiment tracking, Sentry e
 
 > [!NOTE]
 >
-> This plugin reduces ongoing surveillance but can't stop data from the initial handshake, like what's sent when Discord boots up. Full coverage would be at the Electron level.
+> This plugin reduces ongoing surveillance but can't stop data from the initial handshake, like what's saved and sent when Discord boots up. Full coverage would be at the Electron level.
 
 ## Credits
 
