@@ -8,7 +8,7 @@
 Get notified when messages match your keywords.
 
 ## [Incognito](./Incognito) ![Version][incognito-version-badge]
-Blocks Discord's telemetry, analytics, and tracking while providing privacy features.
+Stop tracking, hide typing, spoof fingerprints, and much more.
 
 ## [TwitchPreview](./TwitchPreview) ![Version][twitchpreview-version-badge]
 Every Twitch channel link gets a proper preview with live status, thumbnail, and Twitch styling.
