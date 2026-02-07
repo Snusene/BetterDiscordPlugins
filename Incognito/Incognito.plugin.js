@@ -1,7 +1,7 @@
 /**
  * @name Incognito
- * @description Go incognito. Stop tracking, hide typing, spoof activity, and much more.
- * @version 0.9.78
+ * @description Stop tracking, hide typing, spoof fingerprints, and much more.
+ * @version 0.9.8
  * @author Snues
  * @authorId 98862725609816064
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
@@ -12,7 +12,7 @@
 const TRACKING_PARAMS = new Set(["utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","utm_referrer","utm_social","utm_social-type","gclid","gclsrc","dclid","gbraid","wbraid","_ga","_gl","_gac","fbclid","fb_action_ids","fb_action_types","fb_source","fb_ref","msclkid","twclid","ttclid","_ttp","li_fat_id","li_tc","mc_cid","mc_eid","_hsenc","_hsmi","hsa_acc","hsa_cam","hsa_grp","hsa_ad","hsa_src","hsa_tgt","hsa_kw","hsa_mt","hsa_net","hsa_ver","mkt_tok","_kx","__s","vero_id","vero_conv","sc_cid","s_kwcid","igshid","si","feature","pp","nd","go","tag","ascsubtag","ref_","pf_rd_p","pf_rd_r","spm","scm","pvid","algo_pvid","algo_expid","aff_platform","aff_trace_key","terminal_id","_branch_match_id","_branch_referrer","ref","ref_src","ref_url","source","context","s","t","trk","clickid","click_id","cid","campaign_id","ad_id","adset_id","creative_id","placement","affiliate_id","aff_id","oly_anon_id","oly_enc_id","rb_clickid","ns_mchannel","ns_source","ns_campaign","ns_linkname","ns_fee","yclid","zanpid","irclickid","ranMID","ranEAID","ranSiteID","vgo_ee","sref","ito","wickedid","ncid","pd_rd_w","pd_rd_wg","pd_rd_i","qid","sr","keywords","crid","sprefix","_encoding","psc","mbid","xtor","_openstat","smid","smtyp","dm_i","elqTrack","elqTrackId","mkwid","pcrid","pkw","pmt","slid"]);
 
 const STAT_KEYS = [
-  "analyticsBlocked",
+  "telemetryBlocked",
   "sentryBlocked",
   "readReceiptsBlocked",
   "typingIndicatorsBlocked",
@@ -22,77 +22,72 @@ const STAT_KEYS = [
   "fingerprintsSpoofed",
 ];
 
-const CHANGELOG = [
+/* const CHANGELOG = [
   {
-    title: "New",
+    title: "What's new",
     type: "added",
-    items: ["Added Hide Client Mods as a new setting"],
+    items: [To be changed],
   },
-  {
-    title: "Improved",
-    type: "improved",
-    items: [
-      "Stronger process scanning protection",
-      "Reorganized code for easier maintenance",
-      "Blocks Nitro premium-marketing analytics",
-    ],
-  },
-  {
-    title: "Fixes",
-    type: "fixed",
-    items: ["Fixed memory leaks"],
-  },
-];
+]; */
 
 module.exports = class Incognito {
-  static _moduleCache = null;
+  static resolveModKey(mod) {
+    if (!mod) return null;
+    const key = Object.keys(mod).find((k) => typeof mod[k] === "function");
+    return key ? [mod, key] : null;
+  }
 
   static getModules() {
-    if (Incognito._moduleCache) return Incognito._moduleCache;
+    const { Stores, Filters } = BdApi.Webpack;
 
-    Incognito._moduleCache = {
-      Analytics: BdApi.Webpack.getByKeys("AnalyticEventConfigs"),
-      NativeModule: BdApi.Webpack.getByKeys("getDiscordUtils"),
-      CrashReporter: BdApi.Webpack.getModule((m) => m?.submitLiveCrashReport),
-      TypingModule: BdApi.Webpack.getByKeys("startTyping", "stopTyping"),
-      ActivityTrackingStore: BdApi.Webpack.getStore("ActivityTrackingStore"),
-      IdleStore: BdApi.Webpack.getStore("IdleStore"),
-      MessageActions: BdApi.Webpack.getByKeys("sendMessage", "editMessage"),
-      SuperProperties: BdApi.Webpack.getByKeys(
-        "getSuperProperties",
-        "getSuperPropertiesBase64",
-      ),
-      Uploader: BdApi.Webpack.getModule((m) => m?.prototype?.uploadFiles),
-      AckModule: BdApi.Webpack.getByKeys("ack"),
-      TimezoneModule: (() => {
-        const tzMod = BdApi.Webpack.getBySource("resolvedOptions().timeZone", {
-          searchExports: true,
-        });
-        if (!tzMod) return null;
-        const tzKey = Object.keys(tzMod).find(
-          (k) => typeof tzMod[k] === "function",
-        );
-        return tzKey ? [tzMod, tzKey] : null;
-      })(),
-      DebugOptionsStore: BdApi.Webpack.getByKeys("getDebugOptionsHeaderValue"),
-      MetricsModule: BdApi.Webpack.getByKeys("increment", "distribution"),
-      ConsentStore: BdApi.Webpack.getStore("ConsentStore"),
-      ClipsStore: BdApi.Webpack.getStore("ClipsStore"),
-      ConsentModule: BdApi.Webpack.getBySource("SETTINGS_CONSENT", {
+    const bulk = BdApi.Webpack.getBulkKeyed({
+      Analytics: { filter: Filters.byKeys("AnalyticEventConfigs") },
+      NativeModule: { filter: Filters.byKeys("getDiscordUtils") },
+      CrashReporter: { filter: (m) => m?.submitLiveCrashReport },
+      TypingModule: { filter: Filters.byKeys("startTyping", "stopTyping") },
+      MessageActions: { filter: Filters.byKeys("sendMessage", "editMessage") },
+      SuperProperties: {
+        filter: Filters.byKeys(
+          "getSuperProperties",
+          "getSuperPropertiesBase64",
+        ),
+      },
+      Uploader: { filter: (m) => m?.prototype?.uploadFiles },
+      DebugOptionsStore: {
+        filter: Filters.byKeys("getDebugOptionsHeaderValue"),
+      },
+      MetricsModule: { filter: Filters.byKeys("increment", "distribution") },
+      ConsentModule: {
+        filter: Filters.bySource("SETTINGS_CONSENT"),
         searchExports: true,
-      }),
-      APIModule: BdApi.Webpack.getModule((m) => m?.Bo?.post),
-      ClientModsModule: (() => {
-        const mod = BdApi.Webpack.getBySource(".BetterDiscord", {
-          searchExports: true,
-        });
-        if (!mod) return null;
-        const key = Object.keys(mod).find((k) => typeof mod[k] === "function");
-        return key ? [mod, key] : null;
-      })(),
+      },
+      APIModule: { filter: (m) => m?.Bo?.post },
+      HTTPModule: { filter: Filters.byKeys("Request", "post", "get", "del") },
+      _tzRaw: {
+        filter: Filters.bySource("resolvedOptions().timeZone"),
+        searchExports: true,
+      },
+      _cmRaw: {
+        filter: Filters.bySource(".BetterDiscord"),
+        searchExports: true,
+      },
+    });
+
+    const modules = {
+      ...bulk,
+      ActivityTrackingStore: Stores.ActivityTrackingStore,
+      IdleStore: Stores.IdleStore,
+      ConsentStore: Stores.ConsentStore,
+      RunningGameStore: Stores.RunningGameStore,
+      Dispatcher: Stores.ReadStateStore?._dispatcher,
+      TimezoneModule: Incognito.resolveModKey(bulk._tzRaw),
+      ClientModsModule: Incognito.resolveModKey(bulk._cmRaw),
     };
 
-    return Incognito._moduleCache;
+    delete modules._tzRaw;
+    delete modules._cmRaw;
+
+    return modules;
   }
 
   constructor(meta) {
@@ -100,7 +95,7 @@ module.exports = class Incognito {
     this.api = new BdApi(meta.name);
     this.patchers = {};
     this.defaultSettings = {
-      stopAnalytics: true,
+      blockTelemetry: true,
       blockErrorReporting: true,
       blockProcessScanning: true,
       blockReadReceipts: true,
@@ -123,7 +118,7 @@ module.exports = class Incognito {
     );
   }
 
-  showChangelog() {
+  /* showChangelog() {
     const lastVersion = this.api.Data.load("lastVersion");
     if (lastVersion === this.meta.version) return;
     this.api.Data.save("lastVersion", this.meta.version);
@@ -132,7 +127,7 @@ module.exports = class Incognito {
       subtitle: `v${this.meta.version}`,
       changes: CHANGELOG,
     });
-  }
+  } */
 
   incrementStat(stat) {
     this.stats[stat]++;
@@ -160,7 +155,7 @@ module.exports = class Incognito {
 
     this.retryFailed();
 
-    if (this.settings.stopAnalytics) this.stopAnalytics();
+    if (this.settings.blockTelemetry) this.blockTelemetry();
     if (this.settings.blockErrorReporting) this.blockErrorReporting();
     if (this.settings.blockProcessScanning) this.blockProcessScanning();
     if (this.settings.blockReadReceipts) this.blockReadReceipts();
@@ -172,7 +167,7 @@ module.exports = class Incognito {
     if (this.settings.anonymiseFiles) this.anonymiseFiles();
 
     this.injectStyles();
-    this.showChangelog();
+    // this.showChangelog();
   }
 
   injectStyles() {
@@ -194,7 +189,6 @@ module.exports = class Incognito {
     this.patchers = {};
 
     this.disableClipboardHandlers();
-    Incognito._moduleCache = null;
 
     this.api.DOM.removeStyle();
     this.saveStats?.cancel?.();
@@ -211,12 +205,12 @@ module.exports = class Incognito {
 
   retryFailed() {
     const featureModules = {
-      stopAnalytics: () => this.modules.Analytics,
+      blockTelemetry: () => this.modules.Analytics,
       blockErrorReporting: () =>
         window.DiscordSentry?.getClient?.() || this.modules.CrashReporter,
       blockProcessScanning: () =>
         this.modules.NativeModule?.getDiscordUtils?.(),
-      blockReadReceipts: () => this.modules.AckModule?.ack,
+      blockReadReceipts: () => this.modules.HTTPModule?.Request?.prototype?.end,
       disableIdle: () => this.modules.IdleStore,
       silentTyping: () => this.modules.TypingModule?.startTyping,
       spoofFingerprints: () =>
@@ -255,9 +249,9 @@ module.exports = class Incognito {
     });
   }
 
-  stopAnalytics() {
-    const patcher = this.getPatcher("stopAnalytics");
-    const { Analytics, NativeModule } = this.modules;
+  blockTelemetry() {
+    const patcher = this.getPatcher("blockTelemetry");
+    const { Analytics } = this.modules;
     let failed = [];
 
     if (!Analytics) {
@@ -265,7 +259,7 @@ module.exports = class Incognito {
     } else {
       if (Analytics.default?.track) {
         patcher.instead(Analytics.default, "track", () => {
-          this.incrementStat("analyticsBlocked");
+          this.incrementStat("telemetryBlocked");
         });
       } else {
         failed.push("events");
@@ -282,19 +276,6 @@ module.exports = class Incognito {
       } else {
         failed.push("debug logs");
       }
-    }
-
-    if (NativeModule) {
-      patcher.instead(
-        NativeModule,
-        "ensureModule",
-        (_, [moduleName], original) => {
-          if (moduleName?.includes("discord_rpc")) return;
-          return original(moduleName);
-        },
-      );
-    } else {
-      failed.push("RPC");
     }
 
     const { ActivityTrackingStore, MetricsModule } = this.modules;
@@ -315,22 +296,11 @@ module.exports = class Incognito {
       failed.push("metrics");
     }
 
-    const { ConsentStore, ClipsStore, ConsentModule, DebugOptionsStore } =
-      this.modules;
+    const { ConsentStore, ConsentModule, DebugOptionsStore } = this.modules;
     if (ConsentStore?.hasConsented) {
       patcher.instead(ConsentStore, "hasConsented", () => false);
     } else {
       failed.push("consents");
-    }
-
-    if (ClipsStore?.isVoiceRecordingAllowedForUser) {
-      patcher.instead(
-        ClipsStore,
-        "isVoiceRecordingAllowedForUser",
-        () => false,
-      );
-    } else {
-      failed.push("voice clips");
     }
 
     if (DebugOptionsStore?.getDebugOptionsHeaderValue) {
@@ -365,7 +335,7 @@ module.exports = class Incognito {
     if (APIModule?.Bo?.post) {
       patcher.instead(APIModule.Bo, "post", (_, [options], original) => {
         if (isPremiumMarketing(options?.url)) {
-          this.incrementStat("analyticsBlocked");
+          this.incrementStat("telemetryBlocked");
           return Promise.resolve({ ok: true, body: [] });
         }
         return original(options);
@@ -374,7 +344,17 @@ module.exports = class Incognito {
       failed.push("premium-marketing");
     }
 
-    this.handleFailure("stopAnalytics", failed);
+    const { Dispatcher } = this.modules;
+    if (Dispatcher?.dispatch) {
+      patcher.before(Dispatcher, "dispatch", (_, [action]) => {
+        if (action.type === "CONTENT_INVENTORY_TRACK_ITEM_IMPRESSIONS") {
+          action.type = "__INCOGNITO_BLOCKED__";
+          this.incrementStat("telemetryBlocked");
+        }
+      });
+    }
+
+    this.handleFailure("blockTelemetry", failed);
   }
 
   blockErrorReporting() {
@@ -408,7 +388,7 @@ module.exports = class Incognito {
 
   blockProcessScanning() {
     const patcher = this.getPatcher("blockProcessScanning");
-    const { NativeModule } = this.modules;
+    const { NativeModule, RunningGameStore } = this.modules;
     let failed = [];
 
     const DiscordUtils = NativeModule?.getDiscordUtils?.();
@@ -440,10 +420,33 @@ module.exports = class Incognito {
       } else {
         failed.push("candidateGames");
       }
-      this.handleFailure("blockProcessScanning", failed);
     } else {
-      this.handleFailure("blockProcessScanning");
+      failed.push("DiscordUtils");
     }
+
+    if (NativeModule) {
+      patcher.instead(
+        NativeModule,
+        "ensureModule",
+        (_, [moduleName], original) => {
+          if (moduleName?.includes("discord_rpc")) return;
+          return original(moduleName);
+        },
+      );
+    } else {
+      failed.push("RPC");
+    }
+
+    if (RunningGameStore) {
+      patcher.instead(RunningGameStore, "getVisibleGame", () => null);
+      patcher.instead(RunningGameStore, "getVisibleRunningGames", () => []);
+      patcher.instead(RunningGameStore, "getRunningGames", () => []);
+      patcher.instead(RunningGameStore, "getCandidateGames", () => []);
+    } else {
+      failed.push("RunningGameStore");
+    }
+
+    this.handleFailure("blockProcessScanning", failed);
   }
 
   enableProcessMonitor() {
@@ -460,38 +463,29 @@ module.exports = class Incognito {
 
   blockReadReceipts() {
     const patcher = this.getPatcher("blockReadReceipts");
-    const { AckModule } = this.modules;
-    let failed = [];
+    const { HTTPModule } = this.modules;
+    const RequestProto = HTTPModule?.Request?.prototype;
 
-    if (AckModule?.ack) {
-      patcher.instead(AckModule, "ack", () => {
+    if (!RequestProto?.end) {
+      this.handleFailure("blockReadReceipts");
+      return;
+    }
+
+    const isAckUrl = (url) =>
+      typeof url === "string" &&
+      /\/channels\/\d+\/messages\/\d+\/ack/.test(url);
+
+    patcher.instead(RequestProto, "end", (thisObj, args, original) => {
+      if (thisObj.method === "POST" && isAckUrl(thisObj.url)) {
         this.incrementStat("readReceiptsBlocked");
-      });
-    } else {
-      failed.push("message ack");
-    }
-
-    if (AckModule) {
-      let bulkAckKey = null;
-      for (const key of Object.keys(AckModule)) {
-        if (key === "ack") continue;
-        const fn = AckModule[key];
-        if (typeof fn === "function" && fn.toString().includes("BULK_ACK")) {
-          bulkAckKey = key;
-          break;
+        const callback = args[0];
+        if (typeof callback === "function") {
+          callback(null, { ok: true, status: 200, body: {} });
         }
+        return thisObj;
       }
-
-      if (bulkAckKey) {
-        patcher.instead(AckModule, bulkAckKey, () => {});
-      } else {
-        failed.push("bulk ack");
-      }
-    } else {
-      failed.push("bulk ack");
-    }
-
-    this.handleFailure("blockReadReceipts", failed);
+      return original.apply(thisObj, args);
+    });
   }
 
   disableIdle() {
@@ -522,8 +516,13 @@ module.exports = class Incognito {
       return;
     }
 
+    let lastTypingStat = 0;
     patcher.instead(TypingModule, "startTyping", () => {
-      this.incrementStat("typingIndicatorsBlocked");
+      const now = Date.now();
+      if (now - lastTypingStat > 10000) {
+        this.incrementStat("typingIndicatorsBlocked");
+        lastTypingStat = now;
+      }
     });
     patcher.instead(TypingModule, "stopTyping", () => {});
   }
@@ -534,10 +533,15 @@ module.exports = class Incognito {
     let failed = [];
 
     if (SuperProperties?.getSuperProperties) {
+      let lastFingerprintStat = 0;
       patcher.after(SuperProperties, "getSuperProperties", (_, __, ret) => {
         ret.system_locale = "en-US";
         ret.client_app_state = "focused";
-        this.incrementStat("fingerprintsSpoofed");
+        const now = Date.now();
+        if (now - lastFingerprintStat > 10000) {
+          this.incrementStat("fingerprintsSpoofed");
+          lastFingerprintStat = now;
+        }
       });
 
       patcher.after(SuperProperties, "getSuperPropertiesBase64", () => {
@@ -655,7 +659,9 @@ module.exports = class Incognito {
         target.selectionStart = target.selectionEnd = start + sanitized.length;
         target.dispatchEvent(new InputEvent("input", { bubbles: true }));
       } else {
-        const range = window.getSelection().getRangeAt(0);
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const range = selection.getRangeAt(0);
         range.deleteContents();
         range.insertNode(document.createTextNode(sanitized));
         range.collapse(false);
@@ -779,7 +785,7 @@ module.exports = class Incognito {
 
   enableFeature(id) {
     const featureMap = {
-      stopAnalytics: () => this.stopAnalytics(),
+      blockTelemetry: () => this.blockTelemetry(),
       blockErrorReporting: () => this.blockErrorReporting(),
       blockProcessScanning: () => this.blockProcessScanning(),
       blockReadReceipts: () => this.blockReadReceipts(),
@@ -802,7 +808,7 @@ module.exports = class Incognito {
     const plugin = this;
 
     const Banner = () => {
-      const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
+      const [, forceUpdate] = BdApi.Hooks.useForceUpdate();
 
       React.useEffect(() => {
         const interval = setInterval(forceUpdate, 1000);
@@ -866,7 +872,7 @@ module.exports = class Incognito {
     const banner = React.createElement(Banner);
 
     const settingToStat = {
-      stopAnalytics: { key: "analyticsBlocked", label: "blocked" },
+      blockTelemetry: { key: "telemetryBlocked", label: "blocked" },
       blockErrorReporting: { key: "sentryBlocked", label: "blocked" },
       blockReadReceipts: { key: "readReceiptsBlocked", label: "blocked" },
       disableIdle: { key: "idleSpoofed", label: "spoofed" },
@@ -878,19 +884,19 @@ module.exports = class Incognito {
 
     const settingsConfig = [
       {
-        id: "stopAnalytics",
-        name: "Stop Analytics",
-        note: "Blocks telemetry, debug logs, activity tracking, usage metrics, and Nitro marketing.",
+        id: "blockTelemetry",
+        name: "Block Telemetry",
+        note: "Stops Discord's analytics, usage metrics, activity reporting, and Nitro promotion tracking.",
       },
       {
         id: "blockErrorReporting",
         name: "Block Error Reporting",
-        note: "Prevents Sentry error reports and crash reports from being sent to Discord.",
+        note: "Intercepts Sentry error reports and crash reports before they reach Discord.",
       },
       {
         id: "blockProcessScanning",
         name: "Block Process Scanning",
-        note: "Prevents Discord from seeing any processes running on your PC.",
+        note: "Stops Discord from seeing any processes running on your PC.",
       },
       {
         id: "blockReadReceipts",
@@ -900,12 +906,12 @@ module.exports = class Incognito {
       {
         id: "disableIdle",
         name: "Disable Idle",
-        note: "Prevents Discord and other users from knowing when you're idle or AFK.",
+        note: "Keeps your status active so Discord and other users won't see you as idle or AFK.",
       },
       {
         id: "silentTyping",
         name: "Silent Typing",
-        note: "Hides your typing indicator from other users.",
+        note: "Hides your typing indicator from everyone.",
       },
       {
         id: "spoofFingerprints",
@@ -920,12 +926,12 @@ module.exports = class Incognito {
       {
         id: "stripUrlTrackers",
         name: "Strip URL Trackers",
-        note: "Removes tracking parameters from URLs in messages you send and when copying/pasting.",
+        note: "Removes common tracking parameters from URLs you send, copy, or paste.",
       },
       {
         id: "anonymiseFiles",
         name: "Anonymise Files",
-        note: "Randomizes file names and strips metadata from images before upload.",
+        note: "Randomises file names and strips metadata from images before upload.",
       },
     ];
 
@@ -994,6 +1000,37 @@ module.exports = class Incognito {
       onChange: (_, id, value) => handleChange(id, value),
     });
 
-    return React.createElement(React.Fragment, null, banner, settingsPanel);
+    const { Text } = BdApi.Components;
+    const footer = React.createElement(
+      Text,
+      {
+        color: Text.Colors.MUTED,
+        size: Text.Sizes.SIZE_12,
+        style: { textAlign: "center", padding: "16px" },
+      },
+      "Made with \u2764\uFE0F for privacy by ",
+      React.createElement(
+        Text,
+        {
+          tag: "a",
+          color: Text.Colors.LINK,
+          size: Text.Sizes.SIZE_12,
+          href: "https://discord.com/users/98862725609816064",
+          style: { textDecoration: "none" },
+        },
+        "Snues",
+      ),
+      ".",
+      React.createElement("br"),
+      "Bugs, feedback, or suggestions? Let me know on Discord.",
+    );
+
+    return React.createElement(
+      React.Fragment,
+      null,
+      banner,
+      settingsPanel,
+      footer,
+    );
   }
 };
