@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 0.9.8
+ * @version 0.9.83
  * @author Snues
  * @authorId 98862725609816064
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
@@ -22,13 +22,13 @@ const STAT_KEYS = [
   "fingerprintsSpoofed",
 ];
 
-/* const CHANGELOG = [
+const CHANGELOG = [
   {
-    title: "What's new",
-    type: "added",
-    items: [To be changed],
+    title: "Hotfix",
+    type: "fixed",
+    items: ["Fixed file uploads getting stuck"],
   },
-]; */
+];
 
 module.exports = class Incognito {
   static resolveModKey(mod) {
@@ -61,7 +61,6 @@ module.exports = class Incognito {
         filter: Filters.bySource("SETTINGS_CONSENT"),
         searchExports: true,
       },
-      APIModule: { filter: (m) => m?.Bo?.post },
       HTTPModule: { filter: Filters.byKeys("Request", "post", "get", "del") },
       _tzRaw: {
         filter: Filters.bySource("resolvedOptions().timeZone"),
@@ -118,7 +117,7 @@ module.exports = class Incognito {
     );
   }
 
-  /* showChangelog() {
+  showChangelog() {
     const lastVersion = this.api.Data.load("lastVersion");
     if (lastVersion === this.meta.version) return;
     this.api.Data.save("lastVersion", this.meta.version);
@@ -127,7 +126,7 @@ module.exports = class Incognito {
       subtitle: `v${this.meta.version}`,
       changes: CHANGELOG,
     });
-  } */
+  }
 
   incrementStat(stat) {
     this.stats[stat]++;
@@ -167,7 +166,7 @@ module.exports = class Incognito {
     if (this.settings.anonymiseFiles) this.anonymiseFiles();
 
     this.injectStyles();
-    // this.showChangelog();
+    this.showChangelog();
   }
 
   injectStyles() {
@@ -328,17 +327,17 @@ module.exports = class Incognito {
         .catch(() => {});
     }
 
-    const { APIModule } = this.modules;
+    const { HTTPModule } = this.modules;
     const isPremiumMarketing = (url) =>
       typeof url === "string" && /\/api\/v\d+\/premium-marketing/i.test(url);
 
-    if (APIModule?.Bo?.post) {
-      patcher.instead(APIModule.Bo, "post", (_, [options], original) => {
-        if (isPremiumMarketing(options?.url)) {
+    const RequestProto = HTTPModule?.Request?.prototype;
+    if (RequestProto?.end) {
+      patcher.before(RequestProto, "end", (thisObj) => {
+        if (thisObj.method === "POST" && isPremiumMarketing(thisObj.url)) {
+          thisObj.abort();
           this.incrementStat("telemetryBlocked");
-          return Promise.resolve({ ok: true, body: [] });
         }
-        return original(options);
       });
     } else {
       failed.push("premium-marketing");
