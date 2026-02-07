@@ -23,7 +23,7 @@ Auto marks channels as read when you enter them so that it scrolls to the last m
 Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
 
 [keywordping-version-badge]: https://img.shields.io/badge/version-2.5.0-brightgreen
-[incognito-version-badge]: https://img.shields.io/badge/version-0.9.8-brightgreen
+[incognito-version-badge]: https://img.shields.io/badge/version-0.9.83-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-2.3.2-brightgreen
 [prioritydm-version-badge]: https://img.shields.io/badge/version-1.0.6-brightgreen
 [scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.2-brightgreen
