@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Get notified when messages match your keywords.
- * @version 2.4.7
+ * @version 2.5.0
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/KeywordPing/KeywordPing.plugin.js
  */
@@ -17,45 +17,46 @@ module.exports = class KeywordPing {
     this.ChannelStore = null;
     this.GuildStore = null;
     this.GuildMemberStore = null;
+    this.SortedGuildStore = null;
     this.Dispatcher = null;
     this.interceptor = null;
     this.css = `
             .kp-settings-panel { padding: 10px; }
             .kp-settings-group { margin-bottom: 20px; }
             .kp-category-content .kp-settings-group:last-child { margin-bottom: 0; }
-            .kp-settings-group-title { color: var(--primary-330); font-size: 12px; font-weight: 700; text-transform: uppercase; display: inline; margin-right: 6px; }
+            .kp-settings-group-title { color: var(--text-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; display: inline; margin-right: 6px; }
             .kp-settings-group-header { margin-bottom: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-            .kp-count { background: var(--brand-500); color: white; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; }
-            .kp-textarea { width: 100%; min-height: 120px; background: rgba(0,0,0,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 10px; color: var(--primary-230); font-family: inherit; font-size: 14px; resize: none; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; transition: border-color 0.15s ease; }
-            .kp-textarea:hover { border-color: var(--brand-500); scrollbar-width: thin; scrollbar-color: var(--primary-400) transparent; }
+            .kp-count { background: var(--brand-500); color: var(--white-500); font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; }
+            .kp-textarea { width: 100%; min-height: 120px; background: var(--channeltextarea-background); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px; color: var(--text-default); font-family: inherit; font-size: 14px; resize: none; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; transition: border-color 0.15s ease; }
+            .kp-textarea:hover { border-color: var(--brand-500); scrollbar-width: thin; scrollbar-color: var(--scrollbar-auto-thumb) transparent; }
             .kp-textarea:focus { border-color: var(--brand-500); outline: none; }
             .kp-textarea::-webkit-scrollbar { width: 8px; background: transparent; }
             .kp-textarea::-webkit-scrollbar-track { background: transparent; }
             .kp-textarea::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
-            .kp-textarea:hover::-webkit-scrollbar-thumb { background: var(--primary-400); }
-            .kp-textarea::placeholder { color: var(--primary-360); opacity: 0.4; }
-            .kp-hint { color: var(--primary-360); font-size: 12px; line-height: 1.5; }
+            .kp-textarea:hover::-webkit-scrollbar-thumb { background: var(--scrollbar-auto-thumb); }
+            .kp-textarea::placeholder { color: var(--text-muted); opacity: 0.4; }
+            .kp-hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
             .kp-error { color: var(--red-400); font-size: 12px; margin-top: 4px; }
-            .kp-category { margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; overflow: hidden; }
-            .kp-category-header { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(0,0,0,0.2); cursor: pointer; user-select: none; }
-            .kp-category-header:hover { background: rgba(0,0,0,0.3); }
-            .kp-category-title { color: var(--primary-230); font-size: 14px; font-weight: 600; }
-            .kp-category-arrow { color: var(--primary-360); transition: transform 0.2s; }
+            .kp-category { margin-bottom: 16px; border: 1px solid var(--border-subtle); border-radius: 8px; overflow: hidden; }
+            .kp-category-header { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--background-mod-normal); cursor: pointer; user-select: none; }
+            .kp-category-header:hover { filter: brightness(0.9); }
+            .kp-category-title { color: var(--text-default); font-size: 14px; font-weight: 600; }
+            .kp-category-arrow { color: var(--text-muted); transition: transform 0.2s; }
             .kp-category-arrow.open { transform: rotate(90deg); }
-            .kp-category-content { padding: 12px; display: none; background: rgba(0,0,0,0.1); }
+            .kp-category-content { padding: 12px; display: none; background: var(--background-mod-muted); }
             .kp-category-content.open { display: block; }
-            .kp-server-list { max-height: 200px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--primary-400) transparent; }
+            .kp-server-list { max-height: 200px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--scrollbar-auto-thumb) transparent; }
             .kp-server-list::-webkit-scrollbar { width: 8px; background: transparent; }
             .kp-server-list::-webkit-scrollbar-track { background: transparent; }
-            .kp-server-list::-webkit-scrollbar-thumb { background: var(--primary-400); border-radius: 4px; }
+            .kp-server-list::-webkit-scrollbar-thumb { background: var(--scrollbar-auto-thumb); border-radius: 4px; }
             .kp-server-item { display: flex; align-items: center; padding: 8px; border-radius: 4px; gap: 10px; }
-            .kp-server-icon { width: 24px; height: 24px; border-radius: 50%; background: var(--primary-630); flex-shrink: 0; object-fit: cover; }
-            .kp-server-icon-placeholder { width: 24px; height: 24px; border-radius: 50%; background: var(--primary-630); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--primary-360); font-weight: 600; }
-            .kp-server-item:hover { background: rgba(255,255,255,0.05); }
-            .kp-server-name { color: var(--primary-230); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            .kp-toggle { position: relative; width: 40px; height: 24px; background: var(--primary-700); border-radius: 12px; cursor: pointer; transition: background 0.2s; }
-            .kp-toggle.on { background: var(--brand-500); }
-            .kp-toggle-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: left 0.2s; }
+            .kp-server-icon { width: 24px; height: 24px; border-radius: 50%; background: var(--background-mod-normal); flex-shrink: 0; object-fit: cover; }
+            .kp-server-icon-placeholder { width: 24px; height: 24px; border-radius: 50%; background: var(--background-mod-normal); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted); font-weight: 600; }
+            .kp-server-item:hover { background: var(--interactive-background-hover); }
+            .kp-server-name { color: var(--text-default); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .kp-toggle { position: relative; width: 40px; height: 24px; background: #72767d; border-radius: 12px; cursor: pointer; transition: background 0.2s; }
+            .kp-toggle.on { background: var(--control-brand-foreground); }
+            .kp-toggle-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: var(--white-500); border-radius: 50%; transition: left 0.2s; }
             .kp-toggle.on .kp-toggle-knob { left: 18px; }
         `;
   }
@@ -64,10 +65,12 @@ module.exports = class KeywordPing {
     BdApi.DOM.addStyle("KeywordPing", this.css);
     this.loadSettings();
     this.compileKeywords();
-    this.UserStore = BdApi.Webpack.getStore("UserStore");
-    this.ChannelStore = BdApi.Webpack.getStore("ChannelStore");
-    this.GuildStore = BdApi.Webpack.getStore("GuildStore");
-    this.GuildMemberStore = BdApi.Webpack.getStore("GuildMemberStore");
+    const { Stores } = BdApi.Webpack;
+    this.UserStore = Stores.UserStore;
+    this.ChannelStore = Stores.ChannelStore;
+    this.GuildStore = Stores.GuildStore;
+    this.GuildMemberStore = Stores.GuildMemberStore;
+    this.SortedGuildStore = Stores.SortedGuildStore;
     this.currentUserId = this.UserStore.getCurrentUser()?.id;
     this.setupInterceptor();
   }
@@ -87,12 +90,13 @@ module.exports = class KeywordPing {
     this.ChannelStore = null;
     this.GuildStore = null;
     this.GuildMemberStore = null;
+    this.SortedGuildStore = null;
     this.currentUserId = null;
     this.compiledKeywords = [];
   }
 
   setupInterceptor() {
-    this.Dispatcher = BdApi.Webpack.getStore("UserStore")._dispatcher;
+    this.Dispatcher = this.UserStore._dispatcher;
     this.interceptor = (event) => {
       if (event.type === "MESSAGE_CREATE") {
         this.handleMessage(event);
@@ -176,8 +180,8 @@ module.exports = class KeywordPing {
       };
 
       const guilds = plugin.GuildStore?.getGuilds() || {};
-      const SortedGuildStore = BdApi.Webpack.getStore("SortedGuildStore");
-      const guildOrder = SortedGuildStore?.getFlattenedGuildIds?.() || [];
+      const guildOrder =
+        plugin.SortedGuildStore?.getFlattenedGuildIds?.() || [];
       const sortedGuilds = guildOrder.map((id) => guilds[id]).filter(Boolean);
 
       const e = React.createElement;
@@ -357,6 +361,7 @@ module.exports = class KeywordPing {
       for (const compiled of this.compiledKeywords) {
         if (compiled.filter && !this.passesFilter(compiled.filter, message))
           continue;
+        compiled.regex.lastIndex = 0;
         if (
           compiled.regex.test(message.content || "") ||
           message.embeds?.some((e) => compiled.regex.test(JSON.stringify(e)))
