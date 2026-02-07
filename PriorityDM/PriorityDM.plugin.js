@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Bypass Do Not Disturb for DMs from specific people. Right click a user to add them.
- * @version 1.0.5
+ * @version 1.0.6
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/PriorityDM
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/PriorityDM/PriorityDM.plugin.js
  */
@@ -19,14 +19,15 @@ module.exports = class PriorityDM {
 
   start() {
     this.loadSettings();
-    this.UserStore = BdApi.Webpack.getStore("UserStore");
-    this.PresenceStore = BdApi.Webpack.getStore("PresenceStore");
-    this.ChannelStore = BdApi.Webpack.getStore("ChannelStore");
+    const { Stores } = BdApi.Webpack;
+    this.UserStore = Stores.UserStore;
+    this.PresenceStore = Stores.PresenceStore;
+    this.ChannelStore = Stores.ChannelStore;
     this.NotificationModule = BdApi.Webpack.getByKeys(
       "showNotification",
       "requestPermission",
     );
-    this.Dispatcher = BdApi.Webpack.getStore("UserStore")._dispatcher;
+    this.Dispatcher = Stores.UserStore._dispatcher;
     this.Dispatcher.subscribe("MESSAGE_CREATE", this.onMessage);
     this.patchContextMenu();
   }
