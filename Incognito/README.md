@@ -8,7 +8,7 @@ A privacy plugin for BetterDiscord. It blocks telemetry, analytics, debug logs, 
 > This plugin reduces ongoing surveillance but can't block the initial handshake, what Discord saves and sends on startup. Full coverage would be at the Electron level.
 
 <p align="center">
-  <img width="602" height="802" alt="Settings" src="https://github.com/user-attachments/assets/ebdc6935-8e3d-4f71-b870-88674aba2d21" />
+  <img width="602" height="802" alt="settingsPreview" src="https://github.com/user-attachments/assets/2d4a8283-b4b2-4c54-8f4f-a2676221971e" />
 </p>
 
 ## Credits
