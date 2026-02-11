@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
- * @version 1.6.0
+ * @version 1.6.1
  * @website https://github.com/Snusene/BetterDiscordPlugins
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/HideSidebar/HideSidebar.plugin.js
  */
@@ -78,7 +78,7 @@ module.exports = class HideSidebar {
       .${this.guildsClass} {
         transition: width 200ms ease-out, transform 200ms ease-out !important;
         will-change: width, transform;
-        overflow: hidden !important;
+        overflow-x: hidden !important;
       }
 
       .${this.sidebarListClass} > *,
