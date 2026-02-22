@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 0.9.83
+ * @version 0.9.87
  * @author Snues
  * @authorId 98862725609816064
  * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
@@ -11,8 +11,12 @@
 // prettier-ignore
 const TRACKING_PARAMS = new Set(["utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","utm_referrer","utm_social","utm_social-type","gclid","gclsrc","dclid","gbraid","wbraid","_ga","_gl","_gac","fbclid","fb_action_ids","fb_action_types","fb_source","fb_ref","msclkid","twclid","ttclid","_ttp","li_fat_id","li_tc","mc_cid","mc_eid","_hsenc","_hsmi","hsa_acc","hsa_cam","hsa_grp","hsa_ad","hsa_src","hsa_tgt","hsa_kw","hsa_mt","hsa_net","hsa_ver","mkt_tok","_kx","__s","vero_id","vero_conv","sc_cid","s_kwcid","igshid","si","feature","pp","nd","go","tag","ascsubtag","ref_","pf_rd_p","pf_rd_r","spm","scm","pvid","algo_pvid","algo_expid","aff_platform","aff_trace_key","terminal_id","_branch_match_id","_branch_referrer","ref","ref_src","ref_url","source","context","s","t","trk","clickid","click_id","cid","campaign_id","ad_id","adset_id","creative_id","placement","affiliate_id","aff_id","oly_anon_id","oly_enc_id","rb_clickid","ns_mchannel","ns_source","ns_campaign","ns_linkname","ns_fee","yclid","zanpid","irclickid","ranMID","ranEAID","ranSiteID","vgo_ee","sref","ito","wickedid","ncid","pd_rd_w","pd_rd_wg","pd_rd_i","qid","sr","keywords","crid","sprefix","_encoding","psc","mbid","xtor","_openstat","smid","smtyp","dm_i","elqTrack","elqTrackId","mkwid","pcrid","pkw","pmt","slid"]);
 
+// prettier-ignore
+const FRECENCY_FIELDS = new Set(["stickerFrecency","emojiFrecency","emojiReactionFrecency","applicationCommandFrecency","applicationFrecency","guildAndChannelFrecency","playedSoundFrecency","heardSoundFrecency"]);
+
 const STAT_KEYS = [
   "telemetryBlocked",
+  "usageProfilingBlocked",
   "sentryBlocked",
   "readReceiptsBlocked",
   "typingIndicatorsBlocked",
@@ -24,9 +28,13 @@ const STAT_KEYS = [
 
 const CHANGELOG = [
   {
-    title: "Hotfix",
+    title: "Changes",
     type: "fixed",
-    items: ["Fixed file uploads getting stuck"],
+    items: [
+      "New feature: Block Usage Profiling",
+      "Improved startup time slightly",
+      "Made it clearer when features break from Discord updates",
+    ],
   },
 ];
 
@@ -35,6 +43,22 @@ module.exports = class Incognito {
     if (!mod) return null;
     const key = Object.keys(mod).find((k) => typeof mod[k] === "function");
     return key ? [mod, key] : null;
+  }
+
+  static resolveType2Manager(mod) {
+    if (!mod) return null;
+    for (const key of Object.keys(mod)) {
+      const val = mod[key];
+      if (
+        val &&
+        typeof val === "object" &&
+        val.type === 2 &&
+        typeof val.updateAsync === "function"
+      ) {
+        return val;
+      }
+    }
+    return null;
   }
 
   static getModules() {
@@ -59,16 +83,20 @@ module.exports = class Incognito {
       MetricsModule: { filter: Filters.byKeys("increment", "distribution") },
       ConsentModule: {
         filter: Filters.bySource("SETTINGS_CONSENT"),
-        searchExports: true,
+        searchDefault: false,
       },
       HTTPModule: { filter: Filters.byKeys("Request", "post", "get", "del") },
       _tzRaw: {
         filter: Filters.bySource("resolvedOptions().timeZone"),
-        searchExports: true,
+        searchDefault: false,
       },
       _cmRaw: {
         filter: Filters.bySource(".BetterDiscord"),
-        searchExports: true,
+        searchDefault: false,
+      },
+      _settingsProtoRaw: {
+        filter: Filters.bySource("updateAsync", "editInfo"),
+        searchDefault: false,
       },
     });
 
@@ -81,10 +109,12 @@ module.exports = class Incognito {
       Dispatcher: Stores.ReadStateStore?._dispatcher,
       TimezoneModule: Incognito.resolveModKey(bulk._tzRaw),
       ClientModsModule: Incognito.resolveModKey(bulk._cmRaw),
+      Type2Manager: Incognito.resolveType2Manager(bulk._settingsProtoRaw),
     };
 
     delete modules._tzRaw;
     delete modules._cmRaw;
+    delete modules._settingsProtoRaw;
 
     return modules;
   }
@@ -95,6 +125,7 @@ module.exports = class Incognito {
     this.patchers = {};
     this.defaultSettings = {
       blockTelemetry: true,
+      blockUsageProfiling: true,
       blockErrorReporting: true,
       blockProcessScanning: true,
       blockReadReceipts: true,
@@ -155,6 +186,7 @@ module.exports = class Incognito {
     this.retryFailed();
 
     if (this.settings.blockTelemetry) this.blockTelemetry();
+    if (this.settings.blockUsageProfiling) this.blockUsageProfiling();
     if (this.settings.blockErrorReporting) this.blockErrorReporting();
     if (this.settings.blockProcessScanning) this.blockProcessScanning();
     if (this.settings.blockReadReceipts) this.blockReadReceipts();
@@ -182,6 +214,12 @@ module.exports = class Incognito {
   }
 
   stop() {
+    if (this._callbackCheckInterval) {
+      clearInterval(this._callbackCheckInterval);
+      this._callbackCheckInterval = null;
+    }
+    this.restoreBeforeSendCallbacks();
+
     for (const patcher of Object.values(this.patchers)) {
       patcher.unpatchAll();
     }
@@ -205,6 +243,7 @@ module.exports = class Incognito {
   retryFailed() {
     const featureModules = {
       blockTelemetry: () => this.modules.Analytics,
+      blockUsageProfiling: () => this.modules.Type2Manager?.updateAsync,
       blockErrorReporting: () =>
         window.DiscordSentry?.getClient?.() || this.modules.CrashReporter,
       blockProcessScanning: () =>
@@ -354,6 +393,60 @@ module.exports = class Incognito {
     }
 
     this.handleFailure("blockTelemetry", failed);
+  }
+
+  blockUsageProfiling() {
+    const patcher = this.getPatcher("blockUsageProfiling");
+    const { Type2Manager } = this.modules;
+
+    if (!Type2Manager?.updateAsync) {
+      this.handleFailure("blockUsageProfiling");
+      return;
+    }
+
+    patcher.instead(
+      Type2Manager,
+      "updateAsync",
+      (_, [fieldName, mutator, delay], original) => {
+        if (FRECENCY_FIELDS.has(fieldName)) {
+          this.incrementStat("usageProfilingBlocked");
+          return;
+        }
+        return original(fieldName, mutator, delay);
+      },
+    );
+
+    this._callbackCheckInterval = setInterval(() => {
+      const cbs = Type2Manager.beforeSendCallbacks;
+      if (!Array.isArray(cbs) || cbs.length <= 1) return;
+      clearInterval(this._callbackCheckInterval);
+      this._callbackCheckInterval = null;
+      this._originalCallbacks = cbs.map((cb) => ({
+        processProto: cb.processProto,
+      }));
+      for (let i = 1; i < cbs.length; i++) {
+        if (cbs[i] && typeof cbs[i].processProto === "function") {
+          cbs[i].processProto = () => {};
+        }
+      }
+    }, 500);
+  }
+
+  restoreBeforeSendCallbacks() {
+    if (!this._originalCallbacks) return;
+    const cbs = this.modules?.Type2Manager?.beforeSendCallbacks;
+    if (Array.isArray(cbs)) {
+      for (
+        let i = 1;
+        i < cbs.length && i < this._originalCallbacks.length;
+        i++
+      ) {
+        if (cbs[i] && this._originalCallbacks[i]) {
+          cbs[i].processProto = this._originalCallbacks[i].processProto;
+        }
+      }
+    }
+    this._originalCallbacks = null;
   }
 
   blockErrorReporting() {
@@ -776,6 +869,13 @@ module.exports = class Incognito {
   }
 
   disableFeature(feature) {
+    if (feature === "blockUsageProfiling") {
+      if (this._callbackCheckInterval) {
+        clearInterval(this._callbackCheckInterval);
+        this._callbackCheckInterval = null;
+      }
+      this.restoreBeforeSendCallbacks();
+    }
     if (this.patchers[feature]) {
       this.patchers[feature].unpatchAll();
       delete this.patchers[feature];
@@ -785,6 +885,7 @@ module.exports = class Incognito {
   enableFeature(id) {
     const featureMap = {
       blockTelemetry: () => this.blockTelemetry(),
+      blockUsageProfiling: () => this.blockUsageProfiling(),
       blockErrorReporting: () => this.blockErrorReporting(),
       blockProcessScanning: () => this.blockProcessScanning(),
       blockReadReceipts: () => this.blockReadReceipts(),
@@ -872,6 +973,7 @@ module.exports = class Incognito {
 
     const settingToStat = {
       blockTelemetry: { key: "telemetryBlocked", label: "blocked" },
+      blockUsageProfiling: { key: "usageProfilingBlocked", label: "blocked" },
       blockErrorReporting: { key: "sentryBlocked", label: "blocked" },
       blockReadReceipts: { key: "readReceiptsBlocked", label: "blocked" },
       disableIdle: { key: "idleSpoofed", label: "spoofed" },
@@ -886,6 +988,11 @@ module.exports = class Incognito {
         id: "blockTelemetry",
         name: "Block Telemetry",
         note: "Stops Discord's analytics, usage metrics, activity reporting, and Nitro promotion tracking.",
+      },
+      {
+        id: "blockUsageProfiling",
+        name: "Block Usage Profiling",
+        note: "Prevents Discord from syncing your emoji, sticker, command, and channel usage frequency data to their servers.",
       },
       {
         id: "blockErrorReporting",
@@ -968,7 +1075,10 @@ module.exports = class Incognito {
     const getName = (config) => {
       const stat = settingToStat[config.id];
       if (!stat) return config.name;
+
+      const isFailed = this.failed.has(config.id);
       const count = plugin.sessionStats[stat.key] || 0;
+
       return React.createElement(
         React.Fragment,
         null,
@@ -979,11 +1089,13 @@ module.exports = class Incognito {
             style: {
               fontSize: "12px",
               fontWeight: "normal",
-              color: "var(--text-muted)",
+              color: isFailed ? "var(--status-warning)" : "var(--text-muted)",
               marginLeft: "8px",
             },
           },
-          `· ${count.toLocaleString()} ${stat.label}`,
+          isFailed
+            ? "· unavailable due to Discord changes"
+            : `· ${count.toLocaleString()} ${stat.label}`,
         ),
       );
     };
@@ -995,6 +1107,7 @@ module.exports = class Incognito {
         name: getName(config),
         note: config.note,
         value: this.settings[config.id],
+        disabled: this.failed.has(config.id),
       })),
       onChange: (_, id, value) => handleChange(id, value),
     });
