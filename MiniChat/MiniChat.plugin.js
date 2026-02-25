@@ -1,18 +1,24 @@
 /**
- * @name PopoutChat
- * @description Pop out your chat or DMs into a small always on top window.
- * @version 0.3.0
+ * @name MiniChat
+ * @description Minify your chat or DMs into a small always on top window.
+ * @version 0.5.0
  * @author Snues
  * @authorId 98862725609816064
- * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/PopoutChat
- * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/PopoutChat/PopoutChat.plugin.js
+ * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/MiniChat
+ * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/MiniChat/MiniChat.plugin.js
  */
+
+const { React } = BdApi;
 
 const STYLES = `
   body.pc [class*="sidebar__"] { display: none !important; }
   body.pc [class*="membersWrap"] { display: none !important; }
-  body.pc [class*="base__"] > [class*="bar_"] a:has([aria-label="Help"]) {
+  body.pc [class*="search__"] { display: none !important; }
+  body.pc [class*="base__"] > [class*="bar_"] {
     display: none !important;
+  }
+  body.pc [class*="base__"] {
+    grid-template-rows: [top] 0px [titleBarEnd] 0px [noticeEnd] 1fr [end] !important;
   }
   body.pc [class*="chat_"] {
     overflow: hidden !important;
@@ -40,18 +46,49 @@ const STYLES = `
   body.pc section[class*="title_"] [class*="toolbar"] {
     -webkit-app-region: no-drag;
   }
-  .pc-btn {
-    cursor: pointer;
-    color: var(--channels-default, #b5bac1);
-    display: flex;
-    align-items: center;
-    padding: 0 4px;
-    -webkit-app-region: no-drag;
+  body.pc section[class*="title_"] [aria-label="Return to Discord"] [class*="icon_"] {
+    width: 50px !important;
+    height: 50px !important;
   }
-  .pc-btn:hover { color: var(--white, #f2f3f5); }
+  body.pc section[class*="title_"] [aria-label="Return to Discord"] {
+    margin-right: 8px !important;
+  }
 `;
 
-module.exports = class PopoutChat {
+const MiniIcon = (props) =>
+  React.createElement(
+    "svg",
+    {
+      width: props.width || 24,
+      height: props.height || 24,
+      viewBox: "0 0 24 24",
+      fill: "currentColor",
+      className: props.className,
+    },
+    React.createElement("path", {
+      d: "M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z",
+    }),
+  );
+
+const ReturnIcon = (props) =>
+  React.createElement(
+    "svg",
+    {
+      width: props.width || 24,
+      height: props.height || 24,
+      viewBox: "0 0 24 24",
+      fill: "currentColor",
+      className: props.className,
+    },
+    React.createElement("path", {
+      fillRule: "evenodd",
+      d: "M5 2a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V5a3 3 0 0 0-3-3H5zM8 7a1 1 0 0 0-1 1v5a1 1 0 0 0 2 0v-3.59l5.3 5.3a1 1 0 0 0 1.4-1.42L10.42 9H14a1 1 0 0 0 0-2H8z",
+    }),
+  );
+
+const VOICE_CHANNEL_TYPES = [2, 13, 15, 16];
+
+module.exports = class MiniChat {
   constructor(meta) {
     this.meta = meta;
     this.api = new BdApi(meta.name);
@@ -65,6 +102,7 @@ module.exports = class PopoutChat {
   }
 
   start() {
+    DiscordNative.window.setAlwaysOnTop(null, false);
     this.api.DOM.addStyle(this.meta.name, STYLES);
     this.patchToolbar();
   }
@@ -100,106 +138,54 @@ module.exports = class PopoutChat {
     const [mod, key] = BdApi.Webpack.getWithKey((m) => {
       try {
         if (typeof m !== "function") return false;
-        var s = m.toString();
-        return (
-          s.includes("toolbar") &&
-          s.includes("innerClassName") &&
-          s.includes("childrenBottom")
-        );
+        if (!m.Icon || !m.Title || !m.Divider || !m.Caret) return false;
+        return !m.toString().includes("isAuthenticated");
       } catch (e) {
         return false;
       }
-    }) || [null, null];
+    });
     if (!mod || !key) return;
 
+    const HeaderBar = mod[key];
     const plugin = this;
-    const { React } = BdApi;
-    const Tooltip = BdApi.Components.Tooltip;
 
     this.api.Patcher.before(mod, key, (_, [props]) => {
       if (!props || !props.toolbar) return;
-      var ch = BdApi.Webpack.Stores.ChannelStore.getChannel(
+      const ch = BdApi.Webpack.Stores.ChannelStore.getChannel(
         BdApi.Webpack.Stores.SelectedChannelStore.getChannelId(),
       );
-      if (
-        !ch ||
-        ch.type === 2 ||
-        ch.type === 13 ||
-        ch.type === 15 ||
-        ch.type === 16
-      )
-        return;
+      if (!ch || VOICE_CHANNEL_TYPES.includes(ch.type)) return;
       if (plugin.active) {
-        var returnBtn = React.createElement(
-          Tooltip,
-          { text: "Return to Discord" },
-          (tooltipProps) =>
-            React.createElement(
-              "div",
-              Object.assign({}, tooltipProps, {
-                className: "pc-btn",
-                role: "button",
-                "aria-label": "Return to Discord",
-                onClick: () => plugin.restore(),
-              }),
-              React.createElement(
-                "svg",
-                {
-                  width: "24",
-                  height: "24",
-                  viewBox: "0 0 24 24",
-                  fill: "none",
-                },
-                React.createElement("path", {
-                  fill: "currentColor",
-                  d: "M5 2a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-6a1 1 0 1 0-2 0v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6a1 1 0 1 0 0-2H5Z",
-                }),
-                React.createElement("path", {
-                  fill: "currentColor",
-                  d: "M15 13a1 1 0 0 1 0 2H9a1 1 0 0 1-1-1V8a1 1 0 1 1 2 0v3.59l8.3-8.3a1 1 0 1 1 1.4 1.42L11.42 13H15Z",
-                }),
-              ),
-            ),
+        props.toolbar = null;
+        props.children = React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(HeaderBar.Icon, {
+            icon: ReturnIcon,
+            iconSize: 50,
+            onClick: () => plugin.restore(),
+            tooltip: "Return to Discord",
+            "aria-label": "Return to Discord",
+          }),
+          props.children,
         );
-        props.toolbar = React.createElement(React.Fragment, null, returnBtn);
       } else {
-        var btn = React.createElement(
-          Tooltip,
-          { text: "Pop Out" },
-          (tooltipProps) =>
-            React.createElement(
-              "div",
-              Object.assign({}, tooltipProps, {
-                className: "pc-btn",
-                role: "button",
-                "aria-label": "Pop Out",
-                onClick: () => plugin.popout(),
-              }),
-              React.createElement(
-                "svg",
-                {
-                  width: "24",
-                  height: "24",
-                  viewBox: "0 0 24 24",
-                  fill: "currentColor",
-                },
-                React.createElement("path", {
-                  d: "M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z",
-                }),
-              ),
-            ),
-        );
         props.toolbar = React.createElement(
           React.Fragment,
           null,
-          btn,
+          React.createElement(HeaderBar.Icon, {
+            icon: MiniIcon,
+            onClick: () => plugin.mini(),
+            tooltip: "Mini Mode",
+            "aria-label": "Mini Mode",
+          }),
           props.toolbar,
         );
       }
     });
   }
 
-  popout() {
+  mini() {
     if (this.active) return;
     this.bounds = {
       w: window.outerWidth,
