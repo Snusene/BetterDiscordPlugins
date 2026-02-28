@@ -4,4 +4,4 @@
 <sub><i>Using <a href="https://betterdiscord.app/theme/New%20Rem%20Theme">New Rem Theme v7.2</a></i></sub>
 </p>
 
-Minify your current channel's chat or DMs into a small always on top window. Read and send messages while using other apps.
+Minify your current channel's chat or DMs into a small always on top window. Read and send messages while using other apps. To use click Mini Mode in the chat's top toolbar.
