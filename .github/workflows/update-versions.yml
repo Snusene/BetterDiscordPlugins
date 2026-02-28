@@ -23,6 +23,7 @@ jobs:
           PD_VERSION=$(grep -oP '@version \K[0-9.]+' PriorityDM/PriorityDM.plugin.js)
           STL_VERSION=$(grep -oP '@version \K[0-9.]+' ScrollToLatest/ScrollToLatest.plugin.js)
           HS_VERSION=$(grep -oP '@version \K[0-9.]+' HideSidebar/HideSidebar.plugin.js)
+          MC_VERSION=$(grep -oP '@version \K[0-9.]+' MiniChat/MiniChat.plugin.js)
 
           sed -i "s|\[keywordping-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[keywordping-version-badge\]: https://img.shields.io/badge/version-${KP_VERSION}-brightgreen|" README.md
           sed -i "s|\[incognito-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[incognito-version-badge\]: https://img.shields.io/badge/version-${IC_VERSION}-brightgreen|" README.md
@@ -30,6 +31,7 @@ jobs:
           sed -i "s|\[prioritydm-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[prioritydm-version-badge\]: https://img.shields.io/badge/version-${PD_VERSION}-brightgreen|" README.md
           sed -i "s|\[scrolltolatest-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[scrolltolatest-version-badge\]: https://img.shields.io/badge/version-${STL_VERSION}-brightgreen|" README.md
           sed -i "s|\[hidesidebar-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[hidesidebar-version-badge\]: https://img.shields.io/badge/version-${HS_VERSION}-brightgreen|" README.md
+          sed -i "s|\[minichat-version-badge\]: https://img.shields.io/badge/version-[0-9.]*-brightgreen|\[minichat-version-badge\]: https://img.shields.io/badge/version-${MC_VERSION}-brightgreen|" README.md
 
       - name: Commit changes
         run: |
