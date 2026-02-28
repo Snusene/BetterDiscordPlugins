@@ -13,6 +13,9 @@ Stop tracking, hide typing, spoof fingerprints, and much more.
 ## [TwitchPreview](./TwitchPreview) ![Version][twitchpreview-version-badge]
 Every Twitch channel link gets a proper preview with live status, thumbnail, and Twitch styling.
 
+## [MiniChat](./MiniChat) ![Version][minichat-version-badge]
+Turn your chat or DMs into a small always on top window.
+
 ## [PriorityDM](./PriorityDM) ![Version][prioritydm-version-badge]
 Bypass Do Not Disturb for DMs from specific people.
 
@@ -25,6 +28,7 @@ Hides the sidebar when not in use. Move your mouse to the left edge to reveal it
 [keywordping-version-badge]: https://img.shields.io/badge/version-2.5.0-brightgreen
 [incognito-version-badge]: https://img.shields.io/badge/version-0.9.87-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-3.0.0-brightgreen
+[minichat-version-badge]: https://img.shields.io/badge/version-0.6.0-brightgreen
 [prioritydm-version-badge]: https://img.shields.io/badge/version-1.0.6-brightgreen
 [scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.2-brightgreen
 [hidesidebar-version-badge]: https://img.shields.io/badge/version-1.6.2-brightgreen
