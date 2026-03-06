@@ -4,4 +4,4 @@
 <sub><i>Using <a href="https://betterdiscord.app/theme/New%20Rem%20Theme">New Rem Theme v7.2</a></i></sub>
 </p>
 
-Turn your current channel's chat or DMs into a small always on top window. Read and send messages while using other apps. To use click Mini Mode in the chat's top toolbar.
+Pop out any channel or DM into a small Always on Top window. You can open multiple chats at once. To use, click MiniChat in the top toolbar.
