@@ -1,60 +1,57 @@
 /**
  * @name MiniChat
- * @description Minify your chat or DMs into a small always on top window.
- * @version 0.6.0
+ * @description Pop out any chat into a small Always on Top window.
+ * @version 0.7.0
  * @author Snues
  * @authorId 98862725609816064
- * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/MiniChat
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/MiniChat/MiniChat.plugin.js
+ * @donate https://ko-fi.com/snues
  */
 
 const { React } = BdApi;
 const h = React.createElement;
 
 const STYLES = `
-  body.mc [class*="sidebar__"] { display: none !important; }
-  body.mc [class*="membersWrap"] { display: none !important; }
-  body.mc [class*="search__"] { display: none !important; }
-  body.mc [class*="base__"] > [class*="bar_"] {
-    display: none !important;
-  }
-  body.mc [class*="base__"] {
-    grid-template-rows: [top] 0px [titleBarEnd] 0px [noticeEnd] 1fr [end] !important;
-  }
-  body.mc [class*="chat_"] {
-    overflow: hidden !important;
-  }
-  body.mc [class*="chat_"] > [class*="uploadArea"] {
-    position: absolute !important;
-    pointer-events: none !important;
-    opacity: 0 !important;
-  }
-  body.mc [class*="chat_"] > [class*="content_"] {
-    flex: 1 1 auto !important;
-  }
-  body.mc [class*="chat_"] > [class*="content_"] > [class*="container_"]:not([class*="chatContent"]) {
-    display: none !important;
-  }
-  body.mc [class*="chatContent"] {
-    flex: 1 1 auto !important;
-  }
-  body.mc section[class*="title_"] {
-    -webkit-app-region: drag;
-    padding-left: 10px !important;
-  }
-  body.mc section[class*="title_"] a,
-  body.mc section[class*="title_"] button,
-  body.mc section[class*="title_"] [role="button"],
-  body.mc section[class*="title_"] [class*="toolbar"] {
-    -webkit-app-region: no-drag;
-  }
-  body.mc section[class*="title_"] [aria-label="Return to Discord"] [class*="icon_"] {
-    width: 50px !important;
-    height: 50px !important;
-  }
-  body.mc section[class*="title_"] [aria-label="Return to Discord"] {
-    margin-right: 8px !important;
-  }
+#mc-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.mc-popout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.mc-popout > * {
+  min-width: 0;
+  width: 100%;
+}
+.mc-popout [class*="toolbar"] {
+  display: none !important;
+}
+.mc-popout [class*="upperContainer"] {
+  -webkit-app-region: drag;
+}
+.mc-popout [class*="upperContainer"] * {
+  -webkit-app-region: no-drag;
+}
+.mc-popout [class*="upperContainer"] [class*="children"],
+.mc-popout [class*="upperContainer"] [class*="title"] {
+  -webkit-app-region: drag;
+}
+.mc-popout [aria-label="Close"] [class*="icon_"] {
+  width: 50px !important;
+  height: 50px !important;
+}
+.mc-popout [aria-label="Close"] {
+  margin-right: 8px !important;
+  -webkit-app-region: no-drag;
+}
 `;
 
 const svgIcon =
@@ -86,37 +83,245 @@ const ReturnIcon = svgIcon(
 );
 
 const NON_CHAT = [2, 13, 15, 16];
+const mainDoc = document;
+
+function syncBdStyles(doc) {
+  doc.querySelectorAll("[data-mc-synced]").forEach((el) => el.remove());
+  mainDoc.querySelectorAll("bd-head style").forEach((el) => {
+    doc.head.appendChild(el.cloneNode(true)).setAttribute("data-mc-synced", "");
+    try {
+      if (!el.sheet) return;
+      for (const rule of el.sheet.cssRules) {
+        if (rule.type === CSSRule.IMPORT_RULE && rule.href) {
+          const link = doc.createElement("link");
+          link.rel = "stylesheet";
+          link.href = rule.href;
+          link.setAttribute("data-mc-synced", "");
+          doc.head.appendChild(link);
+        }
+      }
+    } catch (e) {}
+  });
+}
+
+function getTheme() {
+  const mainBg = mainDoc.querySelector('[class*="bg__"]');
+  if (!mainBg) return null;
+  const bgParent = mainBg.parentElement;
+  const layers = bgParent?.querySelector('[class*="layers"]');
+  return {
+    app: bgParent?.className || "",
+    bg: mainBg.className,
+    layers: layers?.className || "",
+  };
+}
+
+function Popout({ SplitView, channelId }) {
+  const ref = React.useRef(null);
+  const [tc, setTc] = React.useState(getTheme);
+
+  React.useEffect(() => {
+    const doc = ref.current?.ownerDocument;
+    if (!doc || doc === mainDoc || doc.querySelector("#mc-popout-style"))
+      return;
+
+    doc.documentElement.className = mainDoc.documentElement.className;
+    const mainMount = mainDoc.getElementById("app-mount");
+    const popMount = doc.getElementById("app-mount");
+    if (mainMount && popMount) popMount.className = mainMount.className;
+
+    const s = doc.createElement("style");
+    s.id = "mc-popout-style";
+    s.textContent = STYLES;
+    doc.head.appendChild(s);
+
+    syncBdStyles(doc);
+
+    let timer = null;
+    const resync = () => {
+      syncBdStyles(doc);
+      doc.documentElement.className = mainDoc.documentElement.className;
+      if (mainMount && popMount) popMount.className = mainMount.className;
+      setTc(getTheme());
+    };
+    const observer = new MutationObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(resync, 100);
+    });
+    const bdHead = mainDoc.querySelector("bd-head");
+    if (bdHead)
+      observer.observe(bdHead, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, []);
+
+  return h(
+    "div",
+    { id: "mc-root", className: tc?.app || "", ref },
+    tc ? h("div", { className: tc.bg }) : null,
+    h(
+      "div",
+      { className: (tc?.layers || "") + " mc-popout" },
+      h(SplitView, { channelId, baseChannelId: channelId }),
+    ),
+  );
+}
 
 module.exports = class MiniChat {
   constructor(meta) {
-    this.meta = meta;
     this.api = new BdApi(meta.name);
-    this.saved = null;
+    this.modules = null;
+    this.popouts = new Map();
+    this._abort = null;
   }
 
   start() {
-    this.settings = Object.assign(
-      { alwaysOnTop: true },
-      this.api.Data.load("settings"),
-    );
-    const bounds = this.api.Data.load("bounds");
-    if (bounds) {
-      DiscordNative.window.setMinimumSize(940, 500);
-      window.resizeTo(bounds.w, bounds.h);
-      window.moveTo(bounds.x, bounds.y);
-      if (bounds.maximized) DiscordNative.window.maximize(null);
-      this.api.Data.delete("bounds");
+    this.modules = MiniChat.getModules();
+    this.settings = { alwaysOnTop: true, ...this.api.Data.load("settings") };
+    if (!this.modules.PopoutWindow) {
+      this._abort = new AbortController();
+      BdApi.Webpack.waitForModule(MiniChat.popoutFilter, {
+        signal: this._abort.signal,
+        searchExports: true,
+      })
+        .then((mod) => {
+          if (this.modules) this.modules.PopoutWindow = mod;
+        })
+        .catch(() => {});
     }
-    DiscordNative.window.setAlwaysOnTop(null, false);
-    this.api.DOM.addStyle(this.meta.name, STYLES);
+    this.patchInput();
+    this.patchSplitView();
     this.patchToolbar();
+    this.startAck();
   }
 
   stop() {
-    if (this.saved) this.restore(false);
+    this._abort?.abort();
+    this._abort = null;
+    this.restoreInput();
+    this.stopAck();
+    const pa = this.modules?.PopoutActions;
+    if (pa) for (const wk of this.popouts.values()) pa.close(wk);
+    this.popouts.clear();
     this.api.Patcher.unpatchAll();
-    this.api.DOM.removeStyle(this.meta.name);
-    this.settings = null;
+    this.modules = this.settings = null;
+  }
+
+  startAck() {
+    const { AckActions } = this.modules;
+    if (!AckActions) return;
+    this._dispatcher = BdApi.Webpack.Stores.UserStore._dispatcher;
+    this._onMessage = (e) => {
+      if (this.popouts.has(e.channelId)) AckActions.ack(e.channelId);
+    };
+    this._dispatcher.subscribe("MESSAGE_CREATE", this._onMessage);
+  }
+
+  stopAck() {
+    this._dispatcher?.unsubscribe("MESSAGE_CREATE", this._onMessage);
+    this._dispatcher = this._onMessage = null;
+  }
+
+  patchInput() {
+    const { ChatInputTypes } = this.modules;
+    if (!ChatInputTypes?.SIDEBAR) return;
+    const sb = ChatInputTypes.SIDEBAR;
+    this._origInput = {
+      gifs: { ...sb.gifs },
+      stickers: { ...sb.stickers },
+      gifts: sb.gifts,
+    };
+    sb.gifs.button = true;
+    sb.stickers.button = true;
+    sb.stickers.autoSuggest = true;
+    sb.gifts = { button: true };
+  }
+
+  restoreInput() {
+    const { ChatInputTypes } = this.modules || {};
+    if (!ChatInputTypes?.SIDEBAR || !this._origInput) return;
+    const sb = ChatInputTypes.SIDEBAR;
+    Object.assign(sb.gifs, this._origInput.gifs);
+    Object.assign(sb.stickers, this._origInput.stickers);
+    sb.gifts = this._origInput.gifts;
+    this._origInput = null;
+  }
+
+  patchSplitView() {
+    const { GuildStore } = this.modules;
+    if (!GuildStore) return;
+    const defaults = {
+      name: "DM",
+      roles: {},
+      emojis: [],
+      stickers: [],
+      features: new Set(),
+    };
+    const fake = new Proxy(defaults, { get: (t, p) => (p in t ? t[p] : null) });
+    this.api.Patcher.instead(GuildStore, "getGuild", (_, [id], original) => {
+      const ret = original(id);
+      if (ret == null && id === null) return fake;
+      return ret;
+    });
+    const [threadMod, threadKey] = BdApi.Webpack.getWithKey(
+      BdApi.Webpack.Filters.byStrings("Thread must have a parent ID"),
+    );
+    if (threadMod) {
+      this.api.Patcher.instead(
+        threadMod,
+        threadKey,
+        (_, [channel, opts], original) => {
+          if (channel?.parent_id == null) return;
+          return original(channel, opts);
+        },
+      );
+    }
+  }
+
+  static popoutFilter = (e) => {
+    try {
+      const s = e?.render?.toString();
+      return s?.includes("guestWindow") && s.includes("windowKey");
+    } catch {
+      return false;
+    }
+  };
+
+  static getModules() {
+    const {
+      Webpack,
+      Webpack: { Filters },
+    } = BdApi;
+    return {
+      ...Webpack.getBulkKeyed({
+        SplitView: {
+          filter: Filters.byStrings("channelViewSource", "Split View"),
+          searchExports: true,
+        },
+        ChatInputTypes: {
+          filter: Filters.byKeys("FORM", "SIDEBAR"),
+          searchExports: true,
+        },
+        PopoutActions: {
+          filter: Filters.byKeys("open", "close", "setAlwaysOnTop"),
+        },
+        AckActions: {
+          filter: Filters.byKeys("ack"),
+        },
+        PopoutWindow: { filter: MiniChat.popoutFilter, searchExports: true },
+      }),
+      PopoutWindowStore: Webpack.getStore("PopoutWindowStore"),
+      GuildStore: Webpack.Stores.GuildStore,
+      ChannelStore: Webpack.Stores.ChannelStore,
+      SelectedChannelStore: Webpack.Stores.SelectedChannelStore,
+    };
   }
 
   getSettingsPanel() {
@@ -126,14 +331,13 @@ module.exports = class MiniChat {
           type: "switch",
           id: "alwaysOnTop",
           name: "Always On Top",
-          note: "Keep the window above all others",
+          note: "Keep popout windows above all others",
           value: this.settings.alwaysOnTop,
         },
       ],
       onChange: (_, id, val) => {
         this.settings[id] = val;
         this.api.Data.save("settings", this.settings);
-        if (this.saved) DiscordNative.window.setAlwaysOnTop(null, val);
       },
     });
   }
@@ -157,7 +361,8 @@ module.exports = class MiniChat {
     const Bar = mod[key];
     this.api.Patcher.before(mod, key, (_, [props]) => {
       if (!props) return;
-      if (this.saved) {
+      const popoutChId = props.toolbar?.props?.baseChannelId;
+      if (popoutChId && this.popouts.has(popoutChId)) {
         props.toolbar = null;
         props.children = h(
           React.Fragment,
@@ -165,64 +370,77 @@ module.exports = class MiniChat {
           h(Bar.Icon, {
             icon: ReturnIcon,
             iconSize: 50,
-            onClick: () => this.restore(),
-            tooltip: "Return to Discord",
-            "aria-label": "Return to Discord",
+            onClick: () => this.close(popoutChId),
+            tooltip: "Close",
+            "aria-label": "Close",
           }),
           props.children,
         );
         return;
       }
       if (!props.toolbar) return;
-      const ch = BdApi.Webpack.Stores.ChannelStore.getChannel(
-        BdApi.Webpack.Stores.SelectedChannelStore.getChannelId(),
-      );
+      const chId = this.modules.SelectedChannelStore.getChannelId();
+      const ch = this.modules.ChannelStore.getChannel(chId);
       if (!ch || NON_CHAT.includes(ch.type)) return;
       props.toolbar = h(
         React.Fragment,
         null,
         h(Bar.Icon, {
           icon: MiniIcon,
-          onClick: () => this.mini(),
-          tooltip: "Mini Mode",
-          "aria-label": "Mini Mode",
+          onClick: () => this.open(ch.id),
+          tooltip: "MiniChat",
+          "aria-label": "MiniChat",
         }),
         props.toolbar,
       );
     });
   }
 
-  mini() {
-    if (this.saved) return;
-    const maximized =
-      !!document.fullscreenElement ||
-      (window.outerWidth >= screen.availWidth &&
-        window.outerHeight >= screen.availHeight);
-    this.saved = {
-      w: window.outerWidth,
-      h: window.outerHeight,
-      x: window.screenX,
-      y: window.screenY,
-      maximized,
-    };
-    this.api.Data.save("bounds", this.saved);
-    document.body.classList.add("mc");
-    if (maximized) DiscordNative.window.restore(null);
-    DiscordNative.window.setMinimumSize(300, 300);
-    if (this.settings.alwaysOnTop)
-      DiscordNative.window.setAlwaysOnTop(null, true);
-    window.resizeTo(490, 430);
+  close(channelId) {
+    const wk = this.popouts.get(channelId);
+    if (!wk) return;
+    this.modules.PopoutActions.close(wk);
+    this.popouts.delete(channelId);
   }
 
-  restore(clearSaved = true) {
-    if (!this.saved) return;
-    document.body.classList.remove("mc");
-    DiscordNative.window.setAlwaysOnTop(null, false);
-    DiscordNative.window.setMinimumSize(940, 500);
-    window.resizeTo(this.saved.w, this.saved.h);
-    window.moveTo(this.saved.x, this.saved.y);
-    if (this.saved.maximized) DiscordNative.window.maximize(null);
-    if (clearSaved) this.api.Data.delete("bounds");
-    this.saved = null;
+  open(channelId) {
+    const {
+      SplitView,
+      PopoutActions,
+      PopoutWindow,
+      PopoutWindowStore,
+      ChannelStore,
+    } = this.modules;
+    const wk = "DISCORD_MC_" + channelId;
+    if (PopoutWindowStore.getWindowOpen(wk)) {
+      this.close(channelId);
+      return;
+    }
+    this.popouts.delete(channelId);
+    if (!PopoutWindow) return;
+
+    const channel = ChannelStore.getChannel(channelId);
+    const name = channel ? channel.name || "DM" : "Chat";
+    PopoutActions.open(
+      wk,
+      () =>
+        h(
+          PopoutWindow,
+          { windowKey: wk, withTitleBar: false, title: name, channelId },
+          h(Popout, { SplitView, channelId }),
+        ),
+      { width: 500, height: 450 },
+    );
+    this.popouts.set(channelId, wk);
+
+    let tries = 0;
+    const setup = () => {
+      if (!this.popouts.has(channelId) || tries++ > 20) return;
+      const w = PopoutWindowStore.getWindow(wk);
+      if (!w) return setTimeout(setup, 100);
+      w.resizeTo(500, 450);
+      if (this.settings?.alwaysOnTop) PopoutActions.setAlwaysOnTop(wk, true);
+    };
+    setTimeout(setup, 300);
   }
 };
