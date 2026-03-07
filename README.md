@@ -14,7 +14,7 @@ Stop tracking, hide typing, spoof fingerprints, and much more.
 Every Twitch channel link gets a proper preview with live status, thumbnail, and Twitch styling.
 
 ## [MiniChat](./MiniChat) ![Version][minichat-version-badge]
-Turn your chat or DMs into a small always on top window.
+Pop out any chat into a small Always on Top window.
 
 ## [PriorityDM](./PriorityDM) ![Version][prioritydm-version-badge]
 Bypass Do Not Disturb for DMs from specific people.
