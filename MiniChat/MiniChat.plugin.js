@@ -1,7 +1,7 @@
 /**
  * @name MiniChat
  * @description Pop out any chat into a small Always on Top window.
- * @version 0.7.0
+ * @version 0.7.1
  * @author Snues
  * @authorId 98862725609816064
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/MiniChat/MiniChat.plugin.js
@@ -31,9 +31,6 @@ const STYLES = `
   min-width: 0;
   width: 100%;
 }
-.mc-popout [class*="toolbar"] {
-  display: none !important;
-}
 .mc-popout [class*="upperContainer"] {
   -webkit-app-region: drag;
 }
@@ -44,13 +41,9 @@ const STYLES = `
 .mc-popout [class*="upperContainer"] [class*="title"] {
   -webkit-app-region: drag;
 }
-.mc-popout [aria-label="Close"] [class*="icon_"] {
-  width: 50px !important;
-  height: 50px !important;
-}
 .mc-popout [aria-label="Close"] {
-  margin-right: 8px !important;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 `;
 
@@ -71,14 +64,16 @@ const svgIcon =
 
 const MiniIcon = svgIcon(
   h("path", {
-    d: "M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z",
+    d: "M15 2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6a1 1 0 1 1-2 0V4.41l-4.3 4.3a1 1 0 1 1-1.4-1.42L19.58 3H16a1 1 0 0 1-1-1Z",
+  }),
+  h("path", {
+    d: "M5 2a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-6a1 1 0 1 0-2 0v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6a1 1 0 1 0 0-2H5Z",
   }),
 );
 
-const ReturnIcon = svgIcon(
+const CloseIcon = svgIcon(
   h("path", {
-    fillRule: "evenodd",
-    d: "M5 2a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V5a3 3 0 0 0-3-3H5zM8 7a1 1 0 0 0-1 1v5a1 1 0 0 0 2 0v-3.59l5.3 5.3a1 1 0 0 0 1.4-1.42L10.42 9H14a1 1 0 0 0 0-2H8z",
+    d: "M17.3 18.7a1 1 0 0 0 1.4-1.4L13.42 12l5.3-5.3a1 1 0 0 0-1.42-1.4L12 10.58l-5.3-5.3a1 1 0 0 0-1.4 1.42L10.58 12l-5.3 5.3a1 1 0 1 0 1.42 1.4L12 13.42l5.3 5.3Z",
   }),
 );
 
@@ -363,19 +358,12 @@ module.exports = class MiniChat {
       if (!props) return;
       const popoutChId = props.toolbar?.props?.baseChannelId;
       if (popoutChId && this.popouts.has(popoutChId)) {
-        props.toolbar = null;
-        props.children = h(
-          React.Fragment,
-          null,
-          h(Bar.Icon, {
-            icon: ReturnIcon,
-            iconSize: 50,
-            onClick: () => this.close(popoutChId),
-            tooltip: "Close",
-            "aria-label": "Close",
-          }),
-          props.children,
-        );
+        props.toolbar = h(Bar.Icon, {
+          icon: CloseIcon,
+          onClick: () => this.close(popoutChId),
+          tooltip: "Close",
+          "aria-label": "Close",
+        });
         return;
       }
       if (!props.toolbar) return;
