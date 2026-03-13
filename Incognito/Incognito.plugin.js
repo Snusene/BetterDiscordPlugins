@@ -1,11 +1,11 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 0.9.87
+ * @version 0.9.89
  * @author Snues
  * @authorId 98862725609816064
- * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/Incognito/Incognito.plugin.js
+ * @donate https://ko-fi.com/snues
  */
 
 // prettier-ignore
@@ -30,11 +30,7 @@ const CHANGELOG = [
   {
     title: "Changes",
     type: "fixed",
-    items: [
-      "New feature: Block Usage Profiling",
-      "Improved startup time slightly",
-      "Made it clearer when features break from Discord updates",
-    ],
+    items: ["Fixed a bug in Strip URL trackers"],
   },
 ];
 
@@ -678,7 +674,7 @@ module.exports = class Incognito {
         const parsed = new URL(cleanInput);
         let changed = false;
 
-        for (const param of parsed.searchParams.keys()) {
+        for (const param of [...parsed.searchParams.keys()]) {
           if (TRACKING_PARAMS.has(param)) {
             parsed.searchParams.delete(param);
             changed = true;
@@ -816,27 +812,161 @@ module.exports = class Incognito {
       return file;
     }
 
-    let bitmap;
     try {
-      bitmap = await createImageBitmap(file);
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return file;
+      const buf = await file.arrayBuffer();
+      let stripped;
 
-      ctx.drawImage(bitmap, 0, 0);
-      const quality = file.type === "image/png" ? undefined : 0.92;
-      const blob = await canvas.convertToBlob({ type: file.type, quality });
-      if (!blob) return file;
+      if (file.type === "image/jpeg") stripped = this.stripJpegMeta(buf);
+      else if (file.type === "image/png") stripped = this.stripPngMeta(buf);
+      else if (file.type === "image/webp") stripped = this.stripWebpMeta(buf);
 
-      return new File([blob], file.name, {
+      if (!stripped) return file;
+
+      return new File([stripped], file.name, {
         type: file.type,
         lastModified: Date.now(),
       });
     } catch {
       return file;
-    } finally {
-      bitmap?.close();
     }
+  }
+
+  stripJpegMeta(buf) {
+    const view = new DataView(buf);
+    if (buf.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
+
+    const parts = [new Uint8Array(buf, 0, 2)];
+    let offset = 2;
+
+    while (offset + 1 < buf.byteLength) {
+      const marker = view.getUint16(offset);
+
+      if (marker === 0xffda) {
+        parts.push(new Uint8Array(buf, offset));
+        break;
+      }
+
+      if ((marker & 0xff00) !== 0xff00) return null;
+      if (offset + 3 >= buf.byteLength) return null;
+
+      const segLen = view.getUint16(offset + 2);
+      if (segLen < 2 || offset + 2 + segLen > buf.byteLength) return null;
+
+      const isMeta =
+        (marker >= 0xffe1 && marker <= 0xffef) || marker === 0xfffe;
+      if (!isMeta) {
+        parts.push(new Uint8Array(buf, offset, 2 + segLen));
+      }
+
+      offset += 2 + segLen;
+    }
+
+    return new Blob(parts, { type: "image/jpeg" });
+  }
+
+  stripPngMeta(buf) {
+    const view = new DataView(buf);
+    if (
+      buf.byteLength < 8 ||
+      view.getUint32(0) !== 0x89504e47 ||
+      view.getUint32(4) !== 0x0d0a1a0a
+    ) {
+      return null;
+    }
+
+    const keep = new Set([
+      "IHDR",
+      "PLTE",
+      "IDAT",
+      "IEND",
+      "tRNS",
+      "sRGB",
+      "gAMA",
+      "cHRM",
+      "sBIT",
+      "pHYs",
+      "bKGD",
+      "acTL",
+      "fcTL",
+      "fdAT",
+    ]);
+    const parts = [new Uint8Array(buf, 0, 8)];
+    let offset = 8;
+
+    while (offset + 12 <= buf.byteLength) {
+      const dataLen = view.getUint32(offset);
+      const total = dataLen + 12;
+      if (offset + total > buf.byteLength) break;
+
+      const type = String.fromCharCode(
+        view.getUint8(offset + 4),
+        view.getUint8(offset + 5),
+        view.getUint8(offset + 6),
+        view.getUint8(offset + 7),
+      );
+
+      if (keep.has(type)) {
+        parts.push(new Uint8Array(buf, offset, total));
+      }
+
+      offset += total;
+      if (type === "IEND") break;
+    }
+
+    return new Blob(parts, { type: "image/png" });
+  }
+
+  stripWebpMeta(buf) {
+    const view = new DataView(buf);
+    if (
+      buf.byteLength < 12 ||
+      view.getUint32(0) !== 0x52494646 ||
+      view.getUint32(8) !== 0x57454250
+    ) {
+      return null;
+    }
+
+    const strip = new Set(["EXIF", "XMP ", "ICCP"]);
+    const chunks = [];
+    let offset = 12;
+
+    while (offset + 8 <= buf.byteLength) {
+      const fourCC = String.fromCharCode(
+        view.getUint8(offset),
+        view.getUint8(offset + 1),
+        view.getUint8(offset + 2),
+        view.getUint8(offset + 3),
+      );
+      const chunkSize = view.getUint32(offset + 4, true);
+      const totalLen = 8 + chunkSize + (chunkSize % 2);
+      if (offset + totalLen > buf.byteLength) break;
+
+      if (strip.has(fourCC)) {
+        offset += totalLen;
+        continue;
+      }
+
+      if (fourCC === "VP8X") {
+        const chunk = new Uint8Array(buf.slice(offset, offset + totalLen));
+        chunk[8] &= ~0x2c;
+        chunks.push(chunk);
+      } else {
+        chunks.push(new Uint8Array(buf, offset, totalLen));
+      }
+
+      offset += totalLen;
+    }
+
+    let payloadSize = 4;
+    for (const c of chunks) payloadSize += c.byteLength;
+
+    const header = new ArrayBuffer(12);
+    const hv = new DataView(header);
+    hv.setUint32(0, 0x52494646);
+    hv.setUint32(4, payloadSize, true);
+    hv.setUint32(8, 0x57454250);
+
+    return new Blob([header, ...chunks], { type: "image/webp" });
   }
 
   anonymiseFiles() {
@@ -883,20 +1013,7 @@ module.exports = class Incognito {
   }
 
   enableFeature(id) {
-    const featureMap = {
-      blockTelemetry: () => this.blockTelemetry(),
-      blockUsageProfiling: () => this.blockUsageProfiling(),
-      blockErrorReporting: () => this.blockErrorReporting(),
-      blockProcessScanning: () => this.blockProcessScanning(),
-      blockReadReceipts: () => this.blockReadReceipts(),
-      disableIdle: () => this.disableIdle(),
-      silentTyping: () => this.silentTyping(),
-      spoofFingerprints: () => this.spoofFingerprints(),
-      hideClientMods: () => this.hideClientMods(),
-      stripUrlTrackers: () => this.stripUrlTrackers(),
-      anonymiseFiles: () => this.anonymiseFiles(),
-    };
-    featureMap[id]?.();
+    this[id]?.();
   }
 
   saveSettings() {
@@ -987,12 +1104,12 @@ module.exports = class Incognito {
       {
         id: "blockTelemetry",
         name: "Block Telemetry",
-        note: "Stops Discord's analytics, usage metrics, activity reporting, and Nitro promotion tracking.",
+        note: "Stops Discord's analytics, performance metrics, activity reporting, and Nitro promo tracking.",
       },
       {
         id: "blockUsageProfiling",
         name: "Block Usage Profiling",
-        note: "Prevents Discord from syncing your emoji, sticker, command, and channel usage frequency data to their servers.",
+        note: "Prevents Discord from collecting emoji, sticker, command, and channel usage frequency data.",
       },
       {
         id: "blockErrorReporting",
@@ -1045,30 +1162,12 @@ module.exports = class Incognito {
       this.settings[id] = value;
       this.saveSettings();
 
-      if (id === "blockProcessScanning") {
-        if (value) {
-          this.enableFeature(id);
-        } else {
-          this.disableFeature(id);
-          this.enableProcessMonitor();
-        }
-        return;
-      }
-
-      if (id === "stripUrlTrackers") {
-        if (value) {
-          this.enableFeature(id);
-        } else {
-          this.disableFeature(id);
-          this.disableClipboardHandlers();
-        }
-        return;
-      }
-
       if (value) {
         this.enableFeature(id);
       } else {
         this.disableFeature(id);
+        if (id === "blockProcessScanning") this.enableProcessMonitor();
+        if (id === "stripUrlTrackers") this.disableClipboardHandlers();
       }
     };
 
