@@ -1,7 +1,7 @@
 /**
  * @name MiniChat
  * @description Pop out any chat into a small Always on Top window.
- * @version 0.7.1
+ * @version 0.8.0
  * @author Snues
  * @authorId 98862725609816064
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/MiniChat/MiniChat.plugin.js
@@ -79,6 +79,20 @@ const CloseIcon = svgIcon(
 
 const NON_CHAT = [2, 13, 15, 16];
 const mainDoc = document;
+let suspendFake = false;
+
+class Boundary extends React.Component {
+  state = { e: 0 };
+  static getDerivedStateFromError() {
+    return { e: 1 };
+  }
+  componentDidCatch() {
+    setTimeout(() => this.setState({ e: 0 }), 200);
+  }
+  render() {
+    return this.state.e ? h("div", { id: "mc-root" }) : this.props.children;
+  }
+}
 
 function syncBdStyles(doc) {
   doc.querySelectorAll("[data-mc-synced]").forEach((el) => el.remove());
@@ -158,13 +172,17 @@ function Popout({ SplitView, channelId }) {
   }, []);
 
   return h(
-    "div",
-    { id: "mc-root", className: tc?.app || "", ref },
-    tc ? h("div", { className: tc.bg }) : null,
+    Boundary,
+    null,
     h(
       "div",
-      { className: (tc?.layers || "") + " mc-popout" },
-      h(SplitView, { channelId, baseChannelId: channelId }),
+      { id: "mc-root", className: tc?.app || "", ref },
+      tc ? h("div", { className: tc.bg }) : null,
+      h(
+        "div",
+        { className: (tc?.layers || "") + " mc-popout" },
+        h(SplitView, { channelId, baseChannelId: channelId }),
+      ),
     ),
   );
 }
@@ -262,7 +280,8 @@ module.exports = class MiniChat {
     const fake = new Proxy(defaults, { get: (t, p) => (p in t ? t[p] : null) });
     this.api.Patcher.instead(GuildStore, "getGuild", (_, [id], original) => {
       const ret = original(id);
-      if (ret == null && id === null) return fake;
+      if (ret == null && id === null && this.popouts.size && !suspendFake)
+        return fake;
       return ret;
     });
     const [threadMod, threadKey] = BdApi.Webpack.getWithKey(
@@ -277,6 +296,31 @@ module.exports = class MiniChat {
           return original(channel, opts);
         },
       );
+    }
+    const dispatcher = BdApi.Webpack.Stores.UserStore._dispatcher;
+    this.api.Patcher.before(dispatcher, "dispatch", (_, [event]) => {
+      if (event?.type === "CONNECTION_OPEN") {
+        suspendFake = true;
+        setTimeout(() => {
+          suspendFake = false;
+        }, 0);
+      }
+    });
+    const { UserGuildSettingsStore: ugss } = this.modules;
+    if (ugss) {
+      for (const [fn, fb] of [
+        ["getChannelOverrides", {}],
+        ["getMessageNotifications", 0],
+        ["isMuted", false],
+      ]) {
+        this.api.Patcher.instead(ugss, fn, (_, a, orig) => {
+          try {
+            return orig(...a);
+          } catch {
+            return fb;
+          }
+        });
+      }
     }
   }
 
@@ -313,6 +357,7 @@ module.exports = class MiniChat {
         PopoutWindow: { filter: MiniChat.popoutFilter, searchExports: true },
       }),
       PopoutWindowStore: Webpack.getStore("PopoutWindowStore"),
+      UserGuildSettingsStore: Webpack.getStore("UserGuildSettingsStore"),
       GuildStore: Webpack.Stores.GuildStore,
       ChannelStore: Webpack.Stores.ChannelStore,
       SelectedChannelStore: Webpack.Stores.SelectedChannelStore,
