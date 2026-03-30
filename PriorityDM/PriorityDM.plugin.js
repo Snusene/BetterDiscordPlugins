@@ -2,10 +2,10 @@
  * @name PriorityDM
  * @author Snues
  * @authorId 98862725609816064
- * @description Bypass Do Not Disturb for DMs from specific people. Right click a user to add them.
- * @version 1.0.6
- * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/PriorityDM
+ * @description Let DMs from specific people bypass Do Not Disturb.
+ * @version 1.0.7
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/PriorityDM/PriorityDM.plugin.js
+ * @donate https://ko-fi.com/snues
  */
 
 module.exports = class PriorityDM {
@@ -122,9 +122,10 @@ module.exports = class PriorityDM {
       ? `https://cdn.discordapp.com/avatars/${author.id}/${author.avatar}.png`
       : `https://cdn.discordapp.com/embed/avatars/${(BigInt(author.id) >> 22n) % 6n}.png`;
 
+    if (!this.NotificationModule) return;
     this.NotificationModule.showNotification(
       avatar,
-      author.globalName,
+      author.globalName || author.username,
       message.content,
       { message, channel },
       {
