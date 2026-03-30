@@ -29,6 +29,6 @@ Hides the sidebar when not in use. Move your mouse to the left edge to reveal it
 [incognito-version-badge]: https://img.shields.io/badge/version-0.9.89-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-3.0.0-brightgreen
 [minichat-version-badge]: https://img.shields.io/badge/version-0.8.0-brightgreen
-[prioritydm-version-badge]: https://img.shields.io/badge/version-1.0.6-brightgreen
+[prioritydm-version-badge]: https://img.shields.io/badge/version-1.0.7-brightgreen
 [scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.2-brightgreen
 [hidesidebar-version-badge]: https://img.shields.io/badge/version-1.6.2-brightgreen
