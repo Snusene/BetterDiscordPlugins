@@ -2,7 +2,7 @@
  * @name ScrollToLatest
  * @author Snues
  * @authorId 98862725609816064
- * @description Auto marks channels as read when you enter them so that it scrolls to the last message.
+ * @description Scroll to the last message when entering a channel.
  * @version 1.0.3
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/ScrollToLatest/ScrollToLatest.plugin.js
  * @donate https://ko-fi.com/snues
