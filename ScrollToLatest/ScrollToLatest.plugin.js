@@ -3,14 +3,14 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Auto marks channels as read when you enter them so that it scrolls to the last message.
- * @version 1.0.2
- * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/ScrollToLatest
+ * @version 1.0.3
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/ScrollToLatest/ScrollToLatest.plugin.js
+ * @donate https://ko-fi.com/snues
  */
 
 module.exports = class ScrollToLatest {
   start() {
-    this.Dispatcher = BdApi.Webpack.getStore("UserStore")._dispatcher;
+    this.Dispatcher = BdApi.Webpack.Stores.UserStore._dispatcher;
     this.AckUtils = BdApi.Webpack.getByKeys("ack");
     this.lastChannelId = null;
 
