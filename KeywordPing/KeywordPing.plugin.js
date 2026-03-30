@@ -3,9 +3,9 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Get notified when messages match your keywords.
- * @version 2.5.0
- * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
+ * @version 2.6.0
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/KeywordPing/KeywordPing.plugin.js
+ * @donate https://ko-fi.com/snues
  */
 
 module.exports = class KeywordPing {
@@ -20,6 +20,9 @@ module.exports = class KeywordPing {
     this.SortedGuildStore = null;
     this.Dispatcher = null;
     this.interceptor = null;
+    this.keywordMentions = new Map();
+    this.MessageStore = null;
+    this.RelationshipStore = null;
     this.css = `
             .kp-settings-panel { padding: 10px; }
             .kp-settings-group { margin-bottom: 20px; }
@@ -71,6 +74,8 @@ module.exports = class KeywordPing {
     this.GuildStore = Stores.GuildStore;
     this.GuildMemberStore = Stores.GuildMemberStore;
     this.SortedGuildStore = Stores.SortedGuildStore;
+    this.MessageStore = Stores.MessageStore;
+    this.RelationshipStore = Stores.RelationshipStore;
     this.currentUserId = this.UserStore.getCurrentUser()?.id;
     this.setupInterceptor();
   }
@@ -91,8 +96,11 @@ module.exports = class KeywordPing {
     this.GuildStore = null;
     this.GuildMemberStore = null;
     this.SortedGuildStore = null;
+    this.MessageStore = null;
+    this.RelationshipStore = null;
     this.currentUserId = null;
     this.compiledKeywords = [];
+    this.keywordMentions.clear();
   }
 
   setupInterceptor() {
@@ -100,6 +108,21 @@ module.exports = class KeywordPing {
     this.interceptor = (event) => {
       if (event.type === "MESSAGE_CREATE") {
         this.handleMessage(event);
+      }
+      if (event.type === "LOAD_RECENT_MENTIONS_SUCCESS" && !event.isAfter) {
+        const ids = new Set(event.messages.map((m) => m.id));
+        const extras = [];
+        for (const [id, chId] of this.keywordMentions) {
+          if (ids.has(id)) continue;
+          const msg = this.MessageStore.getMessage(chId, id);
+          if (msg) extras.push(msg);
+          else this.keywordMentions.delete(id);
+        }
+        if (extras.length) {
+          event.messages = [...event.messages, ...extras].sort((a, b) =>
+            b.id.localeCompare(a.id, undefined, { numeric: true }),
+          );
+        }
       }
       return false;
     };
@@ -348,6 +371,7 @@ module.exports = class KeywordPing {
 
     if (message.author.id === this.currentUserId) return;
     if (message.author.bot) return;
+    if (this.RelationshipStore?.isBlocked(message.author.id)) return;
 
     const guildSettings = this.settings.guilds[channel.guild_id];
     if (guildSettings?.enabled === false) return;
@@ -364,7 +388,18 @@ module.exports = class KeywordPing {
         compiled.regex.lastIndex = 0;
         if (
           compiled.regex.test(message.content || "") ||
-          message.embeds?.some((e) => compiled.regex.test(JSON.stringify(e)))
+          message.embeds?.some((e) =>
+            [
+              e.title,
+              e.description,
+              e.author?.name,
+              e.footer?.text,
+              e.provider?.name,
+              ...(e.fields?.flatMap((f) => [f.name, f.value]) || []),
+            ]
+              .filter(Boolean)
+              .some((t) => compiled.regex.test(t)),
+          )
         ) {
           matched = true;
           break;
@@ -380,6 +415,10 @@ module.exports = class KeywordPing {
       ) {
         message.mentions = [...(message.mentions || []), currentUser];
         message.mentioned = true;
+      }
+      this.keywordMentions.set(message.id, message.channel_id);
+      if (this.keywordMentions.size > 25) {
+        this.keywordMentions.delete(this.keywordMentions.keys().next().value);
       }
     }
   }
