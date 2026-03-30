@@ -10,8 +10,8 @@ Get notified when messages match your keywords.
 ## [Incognito](./Incognito) ![Version][incognito-version-badge]
 Stop tracking, hide typing, spoof fingerprints, and much more.
 
-## [TwitchPreview](./TwitchPreview) ![Version][twitchpreview-version-badge]
-Every Twitch channel link gets a proper preview with live status, thumbnail, and Twitch styling.
+## [TwitchPlus](./TwitchPreview) ![Version][twitchpreview-version-badge]
+Every Twitch link gets a proper embed with live status, thumbnails, and Twitch styling.
 
 ## [MiniChat](./MiniChat) ![Version][minichat-version-badge]
 Pop out any chat into a small Always on Top window.
