@@ -1,11 +1,11 @@
 /**
- * @name TwitchPreview
+ * @name TwitchPlus
  * @author Snues
  * @authorId 98862725609816064
- * @description Improved previews for Twitch channel links.
- * @version 3.0.0
- * @website https://github.com/Snusene/BetterDiscordPlugins/tree/main/TwitchPreview
+ * @description Better embeds for Twitch links.
+ * @version 3.0.2
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/TwitchPreview/TwitchPreview.plugin.js
+ * @donate https://ko-fi.com/snues
  */
 
 const { React } = BdApi;
@@ -24,10 +24,10 @@ const STYLES = `
     font-family: "Roobert", "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
   }
   .twitch-playing .twitch-live-badge { display: none; }
+  .twitch-clip-wrap article { border-inline-start-color: #9146ff !important; }
 `;
 
 const CHANNEL_RE = /twitch\.tv\/([a-zA-Z0-9_]+)\/?$/i;
-const CLIP_RE = /twitch\.tv\/\w+\/(clip|video|videos|clips)/i;
 
 const icon = (cls, d, transform) =>
   e(
@@ -51,7 +51,7 @@ const LINK_D =
 
 module.exports = class TwitchPreview {
   start() {
-    BdApi.DOM.addStyle("TwitchPreview", STYLES);
+    BdApi.DOM.addStyle("TwitchPlus", STYLES);
     const emb = BdApi.Webpack.getByKeys("embedFull", "embedVideoActions");
     const ico = BdApi.Webpack.getByKeys("iconWrapper", "iconWrapperActive");
     const anc = BdApi.Webpack.getByKeys("anchor", "anchorUnderlineOnHover");
@@ -65,8 +65,8 @@ module.exports = class TwitchPreview {
   }
 
   stop() {
-    BdApi.DOM.removeStyle("TwitchPreview");
-    BdApi.Patcher.unpatchAll("TwitchPreview");
+    BdApi.DOM.removeStyle("TwitchPlus");
+    BdApi.Patcher.unpatchAll("TwitchPlus");
     this.cache.clear();
     this.cache = null;
     this.cls = null;
@@ -77,7 +77,7 @@ module.exports = class TwitchPreview {
       searchExports: true,
     });
     BdApi.Patcher.after(
-      "TwitchPreview",
+      "TwitchPlus",
       Acc.prototype,
       "renderEmbeds",
       (_, __, res) => {
@@ -92,15 +92,22 @@ module.exports = class TwitchPreview {
         for (let i = 0; i < embeds.length; i++) {
           const embed =
             embeds[i]?.props?.children?.props?.embed || embeds[i]?.props?.embed;
-          if (!embed?.url || CLIP_RE.test(embed.url)) continue;
+          if (!embed?.url || !/twitch\.tv/i.test(embed.url)) continue;
           const match = embed.url.match(CHANNEL_RE);
-          if (!match) continue;
+          if (match) {
+            embeds[i] = e(this.Embed, {
+              channel: match[1].toLowerCase(),
+              fallback: embeds[i],
+              key: `tw-${i}`,
+            });
+          } else {
+            embeds[i] = e(
+              "div",
+              { className: "twitch-clip-wrap", key: `tw-clip-${i}` },
+              embeds[i],
+            );
+          }
           modified = true;
-          embeds[i] = e(this.Embed, {
-            channel: match[1].toLowerCase(),
-            fallback: embeds[i],
-            key: `tw-${i}`,
-          });
         }
 
         if (!modified) return res;
@@ -111,12 +118,14 @@ module.exports = class TwitchPreview {
 
   Embed = ({ channel, fallback }) => {
     const [playing, setPlaying] = React.useState(false);
-    const [info, setInfo] = React.useState(this.cache.get(channel));
+    const cached = this.cache?.get(channel);
+    const [info, setInfo] = React.useState(cached?.data);
 
     React.useEffect(() => {
-      if (!this.cache?.has(channel))
+      const cached = this.cache?.get(channel);
+      if (!cached || Date.now() - cached.time > 300000)
         this.fetchChannel(channel).then((i) => {
-          this.cache?.set(channel, i);
+          this.cache?.set(channel, { data: i, time: Date.now() });
           setInfo(i);
         });
     }, [channel]);
