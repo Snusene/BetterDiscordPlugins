@@ -1,7 +1,7 @@
 /**
  * @name MiniChat
  * @description Pop out any chat into a small Always on Top window.
- * @version 0.8.0
+ * @version 0.8.2
  * @author Snues
  * @authorId 98862725609816064
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/MiniChat/MiniChat.plugin.js
@@ -37,13 +37,36 @@ const STYLES = `
 .mc-popout [class*="upperContainer"] * {
   -webkit-app-region: no-drag;
 }
-.mc-popout [class*="upperContainer"] [class*="children"],
-.mc-popout [class*="upperContainer"] [class*="title"] {
+.mc-popout [class*="upperContainer"] [class*="children"] {
   -webkit-app-region: drag;
+}
+.mc-popout [class*="upperContainer"] [class*="titleWrapper"] {
+  -webkit-app-region: no-drag;
 }
 .mc-popout [aria-label="Close"] {
   -webkit-app-region: no-drag !important;
   pointer-events: auto !important;
+}
+.mc-popout [class*="toolbar"] [class*="iconWrapper"] {
+  width: 28px;
+  height: 28px;
+}
+.mc-popout [class*="toolbar"] [class*="iconWrapper"] svg {
+  width: 18px;
+  height: 18px;
+}
+.mc-icon {
+  width: var(--space-24);
+  height: var(--space-24);
+  border-radius: 7px;
+  margin-right: var(--space-4);
+}
+.mc-popout [class*="channelIcon"] {
+  margin-right: 2px !important;
+}
+.mc-popout [class*="channelIcon"] svg {
+  width: var(--space-16);
+  height: var(--space-16);
 }
 `;
 
@@ -125,9 +148,29 @@ function getTheme() {
   };
 }
 
-function Popout({ SplitView, channelId }) {
+function Popout({ SplitView, channelId, guildIcon }) {
   const ref = React.useRef(null);
   const [tc, setTc] = React.useState(getTheme);
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || !guildIcon) return;
+    const inject = () => {
+      const doc = el.ownerDocument;
+      if (!doc || doc.querySelector(".mc-icon")) return;
+      const target = doc.querySelector('[class*="children__"]');
+      if (!target) return;
+      const img = doc.createElement("img");
+      img.src = guildIcon.url;
+      img.alt = guildIcon.name;
+      img.className = "mc-icon";
+      target.prepend(img);
+    };
+    inject();
+    const obs = new MutationObserver(inject);
+    obs.observe(el, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, [guildIcon]);
 
   React.useEffect(() => {
     const doc = ref.current?.ownerDocument;
@@ -249,12 +292,10 @@ module.exports = class MiniChat {
     this._origInput = {
       gifs: { ...sb.gifs },
       stickers: { ...sb.stickers },
-      gifts: sb.gifts,
+      commands: sb.commands ? { ...sb.commands } : undefined,
     };
-    sb.gifs.button = true;
-    sb.stickers.button = true;
-    sb.stickers.autoSuggest = true;
-    sb.gifts = { button: true };
+    sb.gifs.button = sb.stickers.button = sb.stickers.autoSuggest = true;
+    if (sb.commands) sb.commands.enabled = false;
   }
 
   restoreInput() {
@@ -263,7 +304,8 @@ module.exports = class MiniChat {
     const sb = ChatInputTypes.SIDEBAR;
     Object.assign(sb.gifs, this._origInput.gifs);
     Object.assign(sb.stickers, this._origInput.stickers);
-    sb.gifts = this._origInput.gifts;
+    if (this._origInput.commands && sb.commands)
+      Object.assign(sb.commands, this._origInput.commands);
     this._origInput = null;
   }
 
@@ -355,6 +397,15 @@ module.exports = class MiniChat {
           filter: Filters.byKeys("ack"),
         },
         PopoutWindow: { filter: MiniChat.popoutFilter, searchExports: true },
+        IconUtils: {
+          filter: Filters.byKeys("getGuildIconURL"),
+        },
+        Native: {
+          filter: (m) =>
+            m?.setAlwaysOnTop
+              ?.toString?.()
+              ?.includes?.("window.setAlwaysOnTop"),
+        },
       }),
       PopoutWindowStore: Webpack.getStore("PopoutWindowStore"),
       UserGuildSettingsStore: Webpack.getStore("UserGuildSettingsStore"),
@@ -380,6 +431,19 @@ module.exports = class MiniChat {
         this.api.Data.save("settings", this.settings);
       },
     });
+  }
+
+  guildIcon(channelId) {
+    const { ChannelStore, GuildStore, IconUtils } = this.modules;
+    const gid = ChannelStore.getChannel(channelId)?.getGuildId();
+    const guild = gid && GuildStore.getGuild(gid);
+    if (!guild?.icon || !IconUtils) return null;
+    const url = IconUtils.getGuildIconURL({
+      id: guild.id,
+      icon: guild.icon,
+      size: 48,
+    });
+    return url ? { url, name: guild.name } : null;
   }
 
   patchToolbar() {
@@ -460,7 +524,11 @@ module.exports = class MiniChat {
         h(
           PopoutWindow,
           { windowKey: wk, withTitleBar: false, title: name, channelId },
-          h(Popout, { SplitView, channelId }),
+          h(Popout, {
+            SplitView,
+            channelId,
+            guildIcon: this.guildIcon(channelId),
+          }),
         ),
       { width: 500, height: 450 },
     );
@@ -472,7 +540,8 @@ module.exports = class MiniChat {
       const w = PopoutWindowStore.getWindow(wk);
       if (!w) return setTimeout(setup, 100);
       w.resizeTo(500, 450);
-      if (this.settings?.alwaysOnTop) PopoutActions.setAlwaysOnTop(wk, true);
+      if (this.settings?.alwaysOnTop)
+        this.modules.Native?.setAlwaysOnTop(wk, true);
     };
     setTimeout(setup, 300);
   }
