@@ -11,16 +11,16 @@ Get notified when messages match your keywords.
 Stop tracking, hide typing, spoof fingerprints, and much more.
 
 ## [TwitchPlus](./TwitchPreview) ![Version][twitchpreview-version-badge]
-Every Twitch link gets a proper embed with live status, thumbnails, and Twitch styling.
+Better embeds for Twitch links.
 
 ## [MiniChat](./MiniChat) ![Version][minichat-version-badge]
 Pop out any chat into a small Always on Top window.
 
 ## [PriorityDM](./PriorityDM) ![Version][prioritydm-version-badge]
-Bypass Do Not Disturb for DMs from specific people.
+Let DMs from specific people bypass Do Not Disturb.
 
 ## [ScrollToLatest](./ScrollToLatest) ![Version][scrolltolatest-version-badge]
-Auto marks channels as read when you enter them so that it scrolls to the last message.
+Scroll to the last message when entering a channel.
 
 ## [HideSidebar](./HideSidebar) ![Version][hidesidebar-version-badge]
 Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
