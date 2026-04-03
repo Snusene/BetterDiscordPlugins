@@ -23,7 +23,7 @@ Let DMs from specific people bypass Do Not Disturb.
 Scroll to the last message when entering a channel.
 
 ## [HideSidebar](./HideSidebar) ![Version][hidesidebar-version-badge]
-Hides the sidebar when not in use. Move your mouse to the left edge to reveal it.
+Hides the sidebar when not in use.
 
 [keywordping-version-badge]: https://img.shields.io/badge/version-2.6.0-brightgreen
 [incognito-version-badge]: https://img.shields.io/badge/version-0.9.89-brightgreen
