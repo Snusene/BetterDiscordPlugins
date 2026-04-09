@@ -4,14 +4,14 @@
 
 <br>
 
+## [AutoTranslate](./AutoTranslate) ![Version][autotranslate-version-badge]
+Translate messages in real time using Google Translate.
+
 ## [KeywordPing](./KeywordPing) ![Version][keywordping-version-badge]
 Get notified when messages match your keywords.
 
 ## [Incognito](./Incognito) ![Version][incognito-version-badge]
 Stop tracking, hide typing, spoof fingerprints, and much more.
-
-## [TwitchPlus](./TwitchPreview) ![Version][twitchpreview-version-badge]
-Better embeds for Twitch links.
 
 ## [MiniChat](./MiniChat) ![Version][minichat-version-badge]
 Pop out any chat into a small Always on Top window.
@@ -22,13 +22,13 @@ Let DMs from specific people bypass Do Not Disturb.
 ## [ScrollToLatest](./ScrollToLatest) ![Version][scrolltolatest-version-badge]
 Scroll to the last message when entering a channel.
 
-## [HideSidebar](./HideSidebar) ![Version][hidesidebar-version-badge]
-Hides the sidebar when not in use.
+## [TwitchPlus](./TwitchPreview) ![Version][twitchpreview-version-badge]
+Better embeds for Twitch links.
 
+[autotranslate-version-badge]: https://img.shields.io/badge/version-0.0.0-brightgreen
 [keywordping-version-badge]: https://img.shields.io/badge/version-2.6.0-brightgreen
 [incognito-version-badge]: https://img.shields.io/badge/version-0.9.89-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-3.0.2-brightgreen
 [minichat-version-badge]: https://img.shields.io/badge/version-0.8.2-brightgreen
 [prioritydm-version-badge]: https://img.shields.io/badge/version-1.0.7-brightgreen
 [scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.3-brightgreen
-[hidesidebar-version-badge]: https://img.shields.io/badge/version-1.6.2-brightgreen
