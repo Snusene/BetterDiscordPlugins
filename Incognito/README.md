@@ -8,6 +8,7 @@ Discord fires analytics on virtually every interaction. Incognito blocks all of 
 
 <p align="center">
   <img width="602" height="802" alt="settingsPreview" src="https://github.com/user-attachments/assets/2d4a8283-b4b2-4c54-8f4f-a2676221971e" />
+  <img width="602" height="560" alt="settingsPreview2" src="https://github.com/user-attachments/assets/edd9e5b1-b0f5-46af-93e5-c7ad616af2f9" />
 </p>
 
 ## Credits
