@@ -1,7 +1,8 @@
 /**
  * @name MiniChat
  * @description Pop out any chat into a small Always on Top window.
- * @version 0.8.2
+ * @version 0.8.3
+ * @invite xp2f3YFKMY
  * @author Snues
  * @authorId 98862725609816064
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/MiniChat/MiniChat.plugin.js
@@ -72,18 +73,18 @@ const STYLES = `
 
 const svgIcon =
   (...children) =>
-  (p) =>
-    h(
-      "svg",
-      {
-        width: p.width || 24,
-        height: p.height || 24,
-        viewBox: "0 0 24 24",
-        fill: "currentColor",
-        className: p.className,
-      },
-      ...children,
-    );
+    (p) =>
+      h(
+        "svg",
+        {
+          width: p.width || 24,
+          height: p.height || 24,
+          viewBox: "0 0 24 24",
+          fill: "currentColor",
+          className: p.className,
+        },
+        ...children,
+      );
 
 const MiniIcon = svgIcon(
   h("path", {
@@ -132,7 +133,7 @@ function syncBdStyles(doc) {
           doc.head.appendChild(link);
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   });
 }
 
@@ -148,58 +149,41 @@ function getTheme() {
   };
 }
 
-function Popout({ SplitView, channelId, guildIcon }) {
+function Popout({ SplitView, channelId }) {
   const ref = React.useRef(null);
   const [tc, setTc] = React.useState(getTheme);
-
-  React.useEffect(() => {
-    const el = ref.current;
-    if (!el || !guildIcon) return;
-    const inject = () => {
-      const doc = el.ownerDocument;
-      if (!doc || doc.querySelector(".mc-icon")) return;
-      const target = doc.querySelector('[class*="children__"]');
-      if (!target) return;
-      const img = doc.createElement("img");
-      img.src = guildIcon.url;
-      img.alt = guildIcon.name;
-      img.className = "mc-icon";
-      target.prepend(img);
-    };
-    inject();
-    const obs = new MutationObserver(inject);
-    obs.observe(el, { childList: true, subtree: true });
-    return () => obs.disconnect();
-  }, [guildIcon]);
 
   React.useEffect(() => {
     const doc = ref.current?.ownerDocument;
     if (!doc || doc === mainDoc || doc.querySelector("#mc-popout-style"))
       return;
 
-    doc.documentElement.className = mainDoc.documentElement.className;
     const mainMount = mainDoc.getElementById("app-mount");
     const popMount = doc.getElementById("app-mount");
-    if (mainMount && popMount) popMount.className = mainMount.className;
+    const root = doc.getElementById("mc-root");
+    const axStore = BdApi.Webpack.Stores.AccessibilityStore;
+
+    const sync = () => {
+      syncBdStyles(doc);
+      doc.documentElement.className = mainDoc.documentElement.className;
+      doc.documentElement.style.cssText = mainDoc.documentElement.style.cssText;
+      if (mainMount && popMount) popMount.className = mainMount.className;
+      if (root && axStore) root.style.zoom = axStore.zoom / 100;
+      setTc(getTheme());
+    };
+    sync();
 
     const s = doc.createElement("style");
     s.id = "mc-popout-style";
     s.textContent = STYLES;
     doc.head.appendChild(s);
 
-    syncBdStyles(doc);
-
     let timer = null;
-    const resync = () => {
-      syncBdStyles(doc);
-      doc.documentElement.className = mainDoc.documentElement.className;
-      if (mainMount && popMount) popMount.className = mainMount.className;
-      setTc(getTheme());
-    };
-    const observer = new MutationObserver(() => {
+    const debounced = () => {
       clearTimeout(timer);
-      timer = setTimeout(resync, 100);
-    });
+      timer = setTimeout(sync, 100);
+    };
+    const observer = new MutationObserver(debounced);
     const bdHead = mainDoc.querySelector("bd-head");
     if (bdHead)
       observer.observe(bdHead, {
@@ -207,10 +191,16 @@ function Popout({ SplitView, channelId, guildIcon }) {
         subtree: true,
         characterData: true,
       });
+    observer.observe(mainDoc.documentElement, {
+      attributes: true,
+      attributeFilter: ["style", "class"],
+    });
+    if (axStore) axStore.addChangeListener(debounced);
 
     return () => {
       clearTimeout(timer);
       observer.disconnect();
+      if (axStore) axStore.removeChangeListener(debounced);
     };
   }, []);
 
@@ -250,7 +240,7 @@ module.exports = class MiniChat {
         .then((mod) => {
           if (this.modules) this.modules.PopoutWindow = mod;
         })
-        .catch(() => {});
+        .catch(() => { });
     }
     this.patchInput();
     this.patchSplitView();
@@ -467,6 +457,15 @@ module.exports = class MiniChat {
       if (!props) return;
       const popoutChId = props.toolbar?.props?.baseChannelId;
       if (popoutChId && this.popouts.has(popoutChId)) {
+        const icon = this.guildIcon(popoutChId);
+        if (icon) {
+          props.children = h(
+            React.Fragment,
+            null,
+            h("img", { src: icon.url, alt: icon.name, className: "mc-icon" }),
+            props.children,
+          );
+        }
         props.toolbar = h(Bar.Icon, {
           icon: CloseIcon,
           onClick: () => this.close(popoutChId),
@@ -524,11 +523,7 @@ module.exports = class MiniChat {
         h(
           PopoutWindow,
           { windowKey: wk, withTitleBar: false, title: name, channelId },
-          h(Popout, {
-            SplitView,
-            channelId,
-            guildIcon: this.guildIcon(channelId),
-          }),
+          h(Popout, { SplitView, channelId }),
         ),
       { width: 500, height: 450 },
     );
