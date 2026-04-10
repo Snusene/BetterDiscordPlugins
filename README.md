@@ -5,7 +5,7 @@
 <br>
 
 ## [AutoTranslate](./AutoTranslate) ![Version][autotranslate-version-badge]
-Translate messages in real time using Google Translate.
+Automatically translate messages in chat.
 
 ## [KeywordPing](./KeywordPing) ![Version][keywordping-version-badge]
 Get notified when messages match your keywords.
@@ -25,7 +25,7 @@ Scroll to the last message when entering a channel.
 ## [TwitchPlus](./TwitchPreview) ![Version][twitchpreview-version-badge]
 Better embeds for Twitch links.
 
-[autotranslate-version-badge]: https://img.shields.io/badge/version-0.0.0-brightgreen
+[autotranslate-version-badge]: https://img.shields.io/badge/version-0.1.0-brightgreen
 [keywordping-version-badge]: https://img.shields.io/badge/version-2.6.0-brightgreen
 [incognito-version-badge]: https://img.shields.io/badge/version-0.9.89-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-3.0.2-brightgreen
