@@ -1,18 +1,30 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 0.9.89
+ * @version 1.0.2
  * @author Snues
+ * @invite xp2f3YFKMY
  * @authorId 98862725609816064
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/Incognito/Incognito.plugin.js
  * @donate https://ko-fi.com/snues
  */
 
 // prettier-ignore
-const TRACKING_PARAMS = new Set(["utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","utm_referrer","utm_social","utm_social-type","gclid","gclsrc","dclid","gbraid","wbraid","_ga","_gl","_gac","fbclid","fb_action_ids","fb_action_types","fb_source","fb_ref","msclkid","twclid","ttclid","_ttp","li_fat_id","li_tc","mc_cid","mc_eid","_hsenc","_hsmi","hsa_acc","hsa_cam","hsa_grp","hsa_ad","hsa_src","hsa_tgt","hsa_kw","hsa_mt","hsa_net","hsa_ver","mkt_tok","_kx","__s","vero_id","vero_conv","sc_cid","s_kwcid","igshid","si","feature","pp","nd","go","tag","ascsubtag","ref_","pf_rd_p","pf_rd_r","spm","scm","pvid","algo_pvid","algo_expid","aff_platform","aff_trace_key","terminal_id","_branch_match_id","_branch_referrer","ref","ref_src","ref_url","source","context","s","t","trk","clickid","click_id","cid","campaign_id","ad_id","adset_id","creative_id","placement","affiliate_id","aff_id","oly_anon_id","oly_enc_id","rb_clickid","ns_mchannel","ns_source","ns_campaign","ns_linkname","ns_fee","yclid","zanpid","irclickid","ranMID","ranEAID","ranSiteID","vgo_ee","sref","ito","wickedid","ncid","pd_rd_w","pd_rd_wg","pd_rd_i","qid","sr","keywords","crid","sprefix","_encoding","psc","mbid","xtor","_openstat","smid","smtyp","dm_i","elqTrack","elqTrackId","mkwid","pcrid","pkw","pmt","slid"]);
+const TRACKING_PARAMS = new Set(["__cft__","__hsfp","__hssc","__hstc","__s","__tn__","__twitter_impression","_bhlid","_branch_match_id","_branch_referrer","_ga","_gac","_gl","_hsenc","_hsmi","_kx","_openstat","_trkparms","_trksid","_ttp","action_object_map","action_ref_map","action_type_map","ad_id","adset_id","aff_id","aff_platform","aff_trace_key","affiliate_id","algo_expid","algo_pvid","ar_clx","ascsubtag","at_recipient_id","at_recipient_list","bbeml","bsft_clkid","bsft_uid","campaign_id","campid","click_id","clickid","cmpid","creative_id","curator_clanid","customid","dclid","dm_i","elqTrack","elqTrackId","epik","et_rid","fb_action_ids","fb_action_types","fb_comment_id","fb_ref","fb_source","fbclid","gbraid","gclid","gclsrc","gs_l","guce_referrer","guce_referrer_sig","hsa_acc","hsa_ad","hsa_cam","hsa_grp","hsa_kw","hsa_mt","hsa_net","hsa_src","hsa_tgt","hsa_ver","hsCtaTracking","igsh","igshid","irclickid","irgwc","itm_campaign","itm_medium","itm_source","itm_term","ito","li_fat_id","li_tc","mbid","mc_cid","mc_eid","mc_tc","mkcid","mkevt","mkrid","mkt_tok","mkwid","ml_subscriber","ml_subscriber_hash","msclkid","mtm_cid","ncid","ns_campaign","ns_fee","ns_linkname","ns_mchannel","ns_source","ob_click_id","oft_c","oft_ck","oft_d","oft_id","oft_ids","oft_k","oft_lk","oft_sk","oly_anon_id","oly_enc_id","os_ehash","pcrid","pk_campaign","pk_cid","pk_kwd","pkw","placement","pmt","pvid","ranEAID","ranMID","ranSiteID","rb_clickid","rdt","ref_src","ref_url","s_cid","s_kwcid","sc_cid","sc_customer","sc_eh","sc_uid","scm","sfmc_activityid","sfmc_id","si","slid","smid","sms_click","sms_source","sms_uph","smtyp","snr","spm","srsltid","ss_email_id","syclid","sznclid","terminal_id","toolid","tracking_source","trk","tt_content","tt_medium","ttclid","twclid","unicorn_click_id","utm_campaign","utm_cid","utm_content","utm_id","utm_medium","utm_name","utm_pubreferrer","utm_reader","utm_referrer","utm_social","utm_social-type","utm_source","utm_swu","utm_term","utm_viz_id","vero_conv","vero_id","vgo_ee","wbraid","wickedid","xtor","yclid","ymclid","ysclid","zanpid"]);
 
 // prettier-ignore
-const FRECENCY_FIELDS = new Set(["stickerFrecency","emojiFrecency","emojiReactionFrecency","applicationCommandFrecency","applicationFrecency","guildAndChannelFrecency","playedSoundFrecency","heardSoundFrecency"]);
+const SITE_PARAMS = (() => {
+  const yt = new Set(["feature","pp","kw","is"]);
+  return {
+    amazon: new Set(["tag","ref","ref_","keywords","sr","qid","crid","sprefix","psc","rnid","_encoding","dchild","pd_rd_i","pd_rd_r","pd_rd_w","pd_rd_wg","pf_rd_i","pf_rd_m","pf_rd_p","pf_rd_r","pf_rd_s","pf_rd_t","dib","dib_tag","th","spIA","linkCode","creativeASIN","content-id","social_share","cv_ct_cx","cv_ct_id","cv_ct_pg","cv_ct_we","cv_ct_wn"]),
+    youtube: yt, youtu: yt,
+    x: new Set(["s","t","cn"]),
+    reddit: new Set(["share_id","correlation_id","ref_campaign","ref_source"]),
+  };
+})();
+
+// prettier-ignore
+const FRECENCY_FIELDS = new Set(["stickerFrecency", "emojiFrecency", "emojiReactionFrecency", "applicationCommandFrecency", "applicationFrecency", "guildAndChannelFrecency", "playedSoundFrecency", "heardSoundFrecency"]);
 
 const STAT_KEYS = [
   "telemetryBlocked",
@@ -26,18 +38,10 @@ const STAT_KEYS = [
   "fingerprintsSpoofed",
 ];
 
-const CHANGELOG = [
-  {
-    title: "Changes",
-    type: "fixed",
-    items: ["Fixed a bug in Strip URL trackers"],
-  },
-];
-
 module.exports = class Incognito {
-  static resolveModKey(mod) {
+  static resolveModKey(mod, predicate = (v) => typeof v === "function") {
     if (!mod) return null;
-    const key = Object.keys(mod).find((k) => typeof mod[k] === "function");
+    const key = Object.keys(mod).find((k) => predicate(mod[k]));
     return key ? [mod, key] : null;
   }
 
@@ -59,6 +63,8 @@ module.exports = class Incognito {
 
   static getModules() {
     const { Stores, Filters } = BdApi.Webpack;
+    const bySrc = (s) => (v) =>
+      typeof v === "function" && v.toString().includes(s);
 
     const bulk = BdApi.Webpack.getBulkKeyed({
       Analytics: { filter: Filters.byKeys("AnalyticEventConfigs") },
@@ -94,25 +100,35 @@ module.exports = class Incognito {
         filter: Filters.bySource("updateAsync", "editInfo"),
         searchDefault: false,
       },
+      _clipRaw: {
+        filter: Filters.bySource("Clipboard API not supported"),
+        searchDefault: false,
+      },
+      _ctxRaw: {
+        filter: Filters.bySource("copy-native-link"),
+        searchDefault: false,
+      },
     });
 
-    const modules = {
-      ...bulk,
+    const { _tzRaw, _cmRaw, _settingsProtoRaw, _clipRaw, _ctxRaw, ...rest } =
+      bulk;
+
+    return {
+      ...rest,
       ActivityTrackingStore: Stores.ActivityTrackingStore,
       IdleStore: Stores.IdleStore,
       ConsentStore: Stores.ConsentStore,
       RunningGameStore: Stores.RunningGameStore,
       Dispatcher: Stores.ReadStateStore?._dispatcher,
-      TimezoneModule: Incognito.resolveModKey(bulk._tzRaw),
-      ClientModsModule: Incognito.resolveModKey(bulk._cmRaw),
-      Type2Manager: Incognito.resolveType2Manager(bulk._settingsProtoRaw),
+      TimezoneModule: Incognito.resolveModKey(_tzRaw),
+      ClientModsModule: Incognito.resolveModKey(_cmRaw),
+      Type2Manager: Incognito.resolveType2Manager(_settingsProtoRaw),
+      Clipboard: Incognito.resolveModKey(
+        _clipRaw,
+        bySrc("Clipboard API not supported"),
+      ),
+      LinkMenu: Incognito.resolveModKey(_ctxRaw, bySrc("copy-native-link")),
     };
-
-    delete modules._tzRaw;
-    delete modules._cmRaw;
-    delete modules._settingsProtoRaw;
-
-    return modules;
   }
 
   constructor(meta) {
@@ -144,17 +160,6 @@ module.exports = class Incognito {
     );
   }
 
-  showChangelog() {
-    const lastVersion = this.api.Data.load("lastVersion");
-    if (lastVersion === this.meta.version) return;
-    this.api.Data.save("lastVersion", this.meta.version);
-    BdApi.UI.showChangelogModal({
-      title: this.meta.name,
-      subtitle: `v${this.meta.version}`,
-      changes: CHANGELOG,
-    });
-  }
-
   incrementStat(stat) {
     this.stats[stat]++;
     this.sessionStats[stat]++;
@@ -181,20 +186,11 @@ module.exports = class Incognito {
 
     this.retryFailed();
 
-    if (this.settings.blockTelemetry) this.blockTelemetry();
-    if (this.settings.blockUsageProfiling) this.blockUsageProfiling();
-    if (this.settings.blockErrorReporting) this.blockErrorReporting();
-    if (this.settings.blockProcessScanning) this.blockProcessScanning();
-    if (this.settings.blockReadReceipts) this.blockReadReceipts();
-    if (this.settings.disableIdle) this.disableIdle();
-    if (this.settings.silentTyping) this.silentTyping();
-    if (this.settings.spoofFingerprints) this.spoofFingerprints();
-    if (this.settings.hideClientMods) this.hideClientMods();
-    if (this.settings.stripUrlTrackers) this.stripUrlTrackers();
-    if (this.settings.anonymiseFiles) this.anonymiseFiles();
+    for (const id of Object.keys(this.defaultSettings)) {
+      if (this.settings[id]) this.enableFeature(id);
+    }
 
     this.injectStyles();
-    this.showChangelog();
   }
 
   injectStyles() {
@@ -210,18 +206,7 @@ module.exports = class Incognito {
   }
 
   stop() {
-    if (this._callbackCheckInterval) {
-      clearInterval(this._callbackCheckInterval);
-      this._callbackCheckInterval = null;
-    }
-    this.restoreBeforeSendCallbacks();
-
-    for (const patcher of Object.values(this.patchers)) {
-      patcher.unpatchAll();
-    }
-    this.patchers = {};
-
-    this.disableClipboardHandlers();
+    for (const id of Object.keys(this.patchers)) this.disableFeature(id);
 
     this.api.DOM.removeStyle();
     this.saveStats?.cancel?.();
@@ -255,17 +240,21 @@ module.exports = class Incognito {
       anonymiseFiles: () => this.modules.Uploader,
     };
 
+    let retried = false;
     for (const feature of [...this.failed]) {
       const check = featureModules[feature];
       if (check?.()) {
         this.failed.delete(feature);
         this.settings[feature] = true;
         this.enableFeature(feature);
+        retried = true;
       }
     }
 
-    this.saveSettings();
-    this.api.Data.save("failed", [...this.failed]);
+    if (retried) {
+      this.saveSettings();
+      this.api.Data.save("failed", [...this.failed]);
+    }
   }
 
   markFailed(feature) {
@@ -364,7 +353,7 @@ module.exports = class Incognito {
 
     const { HTTPModule } = this.modules;
     const isPremiumMarketing = (url) =>
-      typeof url === "string" && /\/api\/v\d+\/premium-marketing/i.test(url);
+      typeof url === "string" && /\/api\/v\d+\/premium-marketing/.test(url);
 
     const RequestProto = HTTPModule?.Request?.prototype;
     if (RequestProto?.end) {
@@ -561,7 +550,7 @@ module.exports = class Incognito {
 
     const isAckUrl = (url) =>
       typeof url === "string" &&
-      /\/channels\/\d+\/messages\/\d+\/ack/.test(url);
+      /\/channels\/\d+\/messages\/\d+\/ack|\/read-states\/ack-bulk/.test(url);
 
     patcher.instead(RequestProto, "end", (thisObj, args, original) => {
       if (thisObj.method === "POST" && isAckUrl(thisObj.url)) {
@@ -632,9 +621,8 @@ module.exports = class Incognito {
         }
       });
 
-      patcher.after(SuperProperties, "getSuperPropertiesBase64", () => {
-        const props = SuperProperties.getSuperProperties();
-        return btoa(JSON.stringify(props));
+      patcher.instead(SuperProperties, "getSuperPropertiesBase64", () => {
+        return btoa(JSON.stringify(SuperProperties.getSuperProperties()));
       });
     } else {
       failed.push("locale");
@@ -660,35 +648,44 @@ module.exports = class Incognito {
     }
 
     const [modObj, modKey] = ClientModsModule;
-    patcher.instead(modObj, modKey, () => []);
+    patcher.instead(modObj, modKey, () => false);
   }
 
   stripTrackingParams(content) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     return content.replace(urlRegex, (url) => {
       try {
-        const trailingMatch = url.match(/[),.;:!?]+$/);
-        const trailing = trailingMatch ? trailingMatch[0] : "";
-        const cleanInput = trailing ? url.slice(0, -trailing.length) : url;
+        const trailing = url.match(/[),.;:!?>]+$/)?.[0] ?? "";
+        const cleanInput = url.slice(0, url.length - trailing.length);
 
-        const parsed = new URL(cleanInput);
-        let changed = false;
+        const qIndex = cleanInput.indexOf("?");
+        if (qIndex === -1) return url;
 
-        for (const param of [...parsed.searchParams.keys()]) {
-          if (TRACKING_PARAMS.has(param)) {
-            parsed.searchParams.delete(param);
-            changed = true;
-          }
-        }
+        let base = cleanInput.slice(0, qIndex);
+        const host = base.slice(base.indexOf("//") + 2).split("/")[0];
+        const siteKey = host
+          .split(".")
+          .slice(-3, -1)
+          .find((l) => SITE_PARAMS[l]);
+        const sitePars = SITE_PARAMS[siteKey];
+        if (siteKey === "amazon") base = base.replace(/\/ref=[^/?#]*/, "");
+        const hashIndex = cleanInput.indexOf("#", qIndex);
+        const queryEnd = hashIndex === -1 ? cleanInput.length : hashIndex;
+        const query = cleanInput.slice(qIndex + 1, queryEnd);
+        const hash = cleanInput.slice(queryEnd);
 
-        if (changed) {
-          let cleanUrl = parsed.toString();
-          if (cleanUrl.endsWith("?")) {
-            cleanUrl = cleanUrl.slice(0, -1);
-          }
-          return cleanUrl + trailing;
-        }
-        return url;
+        const params = query.split("&");
+        const kept = params.filter((p) => {
+          const key = decodeURIComponent(p.split("=")[0]);
+          if (TRACKING_PARAMS.has(key) || sitePars?.has(key)) return false;
+          if (siteKey === "amazon" && key.startsWith("__mk_")) return false;
+          return true;
+        });
+
+        if (kept.length === params.length) return url;
+        return (
+          base + (kept.length ? "?" + kept.join("&") : "") + hash + trailing
+        );
       } catch {
         return url;
       }
@@ -704,68 +701,44 @@ module.exports = class Incognito {
       return;
     }
 
-    patcher.before(MessageActions, "sendMessage", (_, [, message]) => {
-      if (message?.content) {
-        const original = message.content;
-        message.content = this.stripTrackingParams(message.content);
-        if (message.content !== original) {
-          this.incrementStat("trackingUrlsStripped");
-        }
-      }
-    });
-
-    this.copyHandler = (e) => {
-      const selection = window.getSelection()?.toString();
-      if (!selection) return;
-
-      const sanitized = this.stripTrackingParams(selection);
-      if (sanitized !== selection) {
-        e.preventDefault();
-        e.clipboardData.setData("text/plain", sanitized);
-        this.incrementStat("trackingUrlsStripped");
-      }
-    };
-
-    this.pasteHandler = (e) => {
-      const text = e.clipboardData?.getData("text/plain");
-      if (!text) return;
-
-      const sanitized = this.stripTrackingParams(text);
-      if (sanitized === text) return;
-
-      const target = e.target;
-      const isInput =
-        target.tagName === "INPUT" || target.tagName === "TEXTAREA";
-      if (!isInput && !target.isContentEditable) return;
-
-      e.preventDefault();
-      if (isInput) {
-        const start = target.selectionStart ?? 0;
-        const end = target.selectionEnd ?? 0;
-        target.value =
-          target.value.slice(0, start) + sanitized + target.value.slice(end);
-        target.selectionStart = target.selectionEnd = start + sanitized.length;
-        target.dispatchEvent(new InputEvent("input", { bubbles: true }));
-      } else {
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0) return;
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
-        range.insertNode(document.createTextNode(sanitized));
-        range.collapse(false);
-        target.dispatchEvent(
-          new InputEvent("input", {
-            bubbles: true,
-            inputType: "insertText",
-            data: sanitized,
-          }),
-        );
-      }
+    const ifChanged = (input, apply) => {
+      if (typeof input !== "string") return;
+      const sanitized = this.stripTrackingParams(input);
+      if (sanitized === input) return;
+      apply(sanitized);
       this.incrementStat("trackingUrlsStripped");
     };
 
+    patcher.before(MessageActions, "sendMessage", (_, [, msg]) =>
+      ifChanged(msg?.content, (s) => {
+        msg.content = s;
+      }),
+    );
+    if (MessageActions.editMessage) {
+      patcher.before(MessageActions, "editMessage", (_, [, , msg]) =>
+        ifChanged(msg?.content, (s) => {
+          msg.content = s;
+        }),
+      );
+    }
+
+    for (const name of ["Clipboard", "LinkMenu"]) {
+      const [m, k] = this.modules[name] || [];
+      if (m)
+        patcher.before(m, k, (_, args) =>
+          ifChanged(args[0], (s) => {
+            args[0] = s;
+          }),
+        );
+    }
+
+    this.copyHandler = (e) =>
+      ifChanged(window.getSelection()?.toString(), (s) => {
+        e.preventDefault();
+        e.clipboardData.setData("text/plain", s);
+      });
+
     document.addEventListener("copy", this.copyHandler, true);
-    document.addEventListener("paste", this.pasteHandler, true);
   }
 
   disableClipboardHandlers() {
@@ -773,21 +746,15 @@ module.exports = class Incognito {
       document.removeEventListener("copy", this.copyHandler, true);
       this.copyHandler = null;
     }
-    if (this.pasteHandler) {
-      document.removeEventListener("paste", this.pasteHandler, true);
-      this.pasteHandler = null;
-    }
   }
 
   randomString(length) {
     const chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    const values = crypto.getRandomValues(new Uint8Array(length));
-    let result = "";
-    for (let i = 0; i < length; i++) {
-      result += chars[values[i] % chars.length];
-    }
-    return result;
+    return Array.from(
+      crypto.getRandomValues(new Uint8Array(length)),
+      (v) => chars[v % chars.length],
+    ).join("");
   }
 
   getExtension(filename) {
@@ -1006,6 +973,9 @@ module.exports = class Incognito {
       }
       this.restoreBeforeSendCallbacks();
     }
+    if (feature === "stripUrlTrackers") {
+      this.disableClipboardHandlers();
+    }
     if (this.patchers[feature]) {
       this.patchers[feature].unpatchAll();
       delete this.patchers[feature];
@@ -1013,6 +983,7 @@ module.exports = class Incognito {
   }
 
   enableFeature(id) {
+    this.disableFeature(id);
     this[id]?.();
   }
 
@@ -1123,8 +1094,8 @@ module.exports = class Incognito {
       },
       {
         id: "blockReadReceipts",
-        name: "Block Read Receipts",
-        note: "Prevents Discord from knowing which messages you've read.",
+        name: "Block Read Tracking",
+        note: "Prevents Discord from knowing which messages you've read. They show as unread on restart.",
       },
       {
         id: "disableIdle",
@@ -1149,7 +1120,7 @@ module.exports = class Incognito {
       {
         id: "stripUrlTrackers",
         name: "Strip URL Trackers",
-        note: "Removes common tracking parameters from URLs you send, copy, or paste.",
+        note: "Removes common tracking parameters from URLs you send or copy.",
       },
       {
         id: "anonymiseFiles",
@@ -1167,7 +1138,6 @@ module.exports = class Incognito {
       } else {
         this.disableFeature(id);
         if (id === "blockProcessScanning") this.enableProcessMonitor();
-        if (id === "stripUrlTrackers") this.disableClipboardHandlers();
       }
     };
 
