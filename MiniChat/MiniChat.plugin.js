@@ -1,11 +1,11 @@
 /**
  * @name MiniChat
  * @description Pop out any chat into a small Always on Top window.
- * @version 0.8.3
+ * @version 0.8.4
  * @invite xp2f3YFKMY
  * @author Snues
  * @authorId 98862725609816064
- * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/MiniChat/MiniChat.plugin.js
+ * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/MiniChat
  * @donate https://ko-fi.com/snues
  */
 
@@ -44,7 +44,9 @@ const STYLES = `
 .mc-popout [class*="upperContainer"] [class*="titleWrapper"] {
   -webkit-app-region: no-drag;
 }
-.mc-popout [aria-label="Close"] {
+.mc-popout [aria-label="Close"],
+.mc-popout [aria-label="Minimize"],
+.mc-popout [aria-label="Maximize"] {
   -webkit-app-region: no-drag !important;
   pointer-events: auto !important;
 }
@@ -60,31 +62,31 @@ const STYLES = `
   width: var(--space-24);
   height: var(--space-24);
   border-radius: 7px;
-  margin-right: var(--space-4);
+  margin-right: var(--space-8);
 }
-.mc-popout [class*="channelIcon"] {
-  margin-right: 2px !important;
+.mc-popout [class*="upperContainer"] [class*="topic__"],
+.mc-popout [class*="upperContainer"] [class*="dot__"] {
+  display: none !important;
 }
-.mc-popout [class*="channelIcon"] svg {
-  width: var(--space-16);
-  height: var(--space-16);
+.mc-popout form[class*="form_"] {
+  zoom: var(--mc-zoom, 1);
 }
 `;
 
 const svgIcon =
   (...children) =>
-    (p) =>
-      h(
-        "svg",
-        {
-          width: p.width || 24,
-          height: p.height || 24,
-          viewBox: "0 0 24 24",
-          fill: "currentColor",
-          className: p.className,
-        },
-        ...children,
-      );
+  (p) =>
+    h(
+      "svg",
+      {
+        width: p.width || 24,
+        height: p.height || 24,
+        viewBox: "0 0 24 24",
+        fill: "currentColor",
+        className: p.className,
+      },
+      ...children,
+    );
 
 const MiniIcon = svgIcon(
   h("path", {
@@ -101,9 +103,16 @@ const CloseIcon = svgIcon(
   }),
 );
 
+const MinIcon = svgIcon(h("path", { d: "M5 11h14v2H5z" }));
+
+const MaxIcon = svgIcon(h("path", { d: "M5 5v14h14V5H5zm12 12H7V7h10v10z" }));
+
 const NON_CHAT = [2, 13, 15, 16];
 const mainDoc = document;
 let suspendFake = false;
+const popupCtx = React.createContext(false);
+const headerLike = (m) =>
+  typeof m === "function" && m.Icon && m.Title && m.Divider && m.Caret;
 
 class Boundary extends React.Component {
   state = { e: 0 };
@@ -133,7 +142,7 @@ function syncBdStyles(doc) {
           doc.head.appendChild(link);
         }
       }
-    } catch (e) { }
+    } catch (e) {}
   });
 }
 
@@ -149,7 +158,8 @@ function getTheme() {
   };
 }
 
-function Popout({ SplitView, channelId }) {
+function Popout({ modules, channelId, headerNode, guildIconUrl, onClose }) {
+  const { Header, Bar, SplitView, Native, ChatInputTypes, ChannelStore, GuildStore } = modules;
   const ref = React.useRef(null);
   const [tc, setTc] = React.useState(getTheme);
 
@@ -168,7 +178,11 @@ function Popout({ SplitView, channelId }) {
       doc.documentElement.className = mainDoc.documentElement.className;
       doc.documentElement.style.cssText = mainDoc.documentElement.style.cssText;
       if (mainMount && popMount) popMount.className = mainMount.className;
-      if (root && axStore) root.style.zoom = axStore.zoom / 100;
+      if (root && axStore) {
+        const z = axStore.zoom / 100;
+        root.style.zoom = z;
+        root.style.setProperty("--mc-zoom", String(1 / z));
+      }
       setTc(getTheme());
     };
     sync();
@@ -204,17 +218,61 @@ function Popout({ SplitView, channelId }) {
     };
   }, []);
 
+  const wk = "DISCORD_MC_" + channelId;
+  const ch = ChannelStore.getChannel(channelId);
+  const guild = ch?.guild_id ? GuildStore.getGuild(ch.guild_id) : null;
+  const chatInputType = ChatInputTypes?.SIDEBAR;
+  const winBtn = (icon, label, onClick) =>
+    h(Bar.Icon, { icon, onClick, tooltip: label, "aria-label": label });
+
   return h(
-    Boundary,
-    null,
+    popupCtx.Provider,
+    { value: true },
     h(
-      "div",
-      { id: "mc-root", className: tc?.app || "", ref },
-      tc ? h("div", { className: tc.bg }) : null,
+      Boundary,
+      null,
       h(
         "div",
-        { className: (tc?.layers || "") + " mc-popout" },
-        h(SplitView, { channelId, baseChannelId: channelId }),
+        { id: "mc-root", className: tc?.app || "", ref },
+        tc ? h("div", { className: tc.bg }) : null,
+        h(
+          "div",
+          { className: (tc?.layers || "") + " mc-popout" },
+          ch && Header
+            ? h(Header, {
+                guildId: ch.guild_id,
+                channelId: ch.id,
+                channelType: ch.type,
+                hideSearch: true,
+                toolbar: h(
+                  React.Fragment,
+                  null,
+                  winBtn(MinIcon, "Minimize", () => Native?.minimize(wk)),
+                  winBtn(MaxIcon, "Maximize", () => Native?.maximize(wk)),
+                  winBtn(CloseIcon, "Close", onClose),
+                ),
+                children: h(
+                  React.Fragment,
+                  null,
+                  guildIconUrl
+                    ? h("img", {
+                        className: "mc-icon",
+                        src: guildIconUrl,
+                        alt: "",
+                      })
+                    : null,
+                  h("div", {
+                    style: { display: "contents" },
+                    ref: (el) =>
+                      el && headerNode && el.replaceChildren(headerNode),
+                  }),
+                ),
+              })
+            : null,
+          ch && SplitView
+            ? h(SplitView, { channel: ch, guild, chatInputType })
+            : null,
+        ),
       ),
     ),
   );
@@ -240,7 +298,7 @@ module.exports = class MiniChat {
         .then((mod) => {
           if (this.modules) this.modules.PopoutWindow = mod;
         })
-        .catch(() => { });
+        .catch(() => {});
     }
     this.patchInput();
     this.patchSplitView();
@@ -252,10 +310,8 @@ module.exports = class MiniChat {
     this._abort?.abort();
     this._abort = null;
     this.restoreInput();
+    for (const cid of [...this.popouts.keys()]) this.close(cid);
     this.stopAck();
-    const pa = this.modules?.PopoutActions;
-    if (pa) for (const wk of this.popouts.values()) pa.close(wk);
-    this.popouts.clear();
     this.api.Patcher.unpatchAll();
     this.modules = this.settings = null;
   }
@@ -265,7 +321,12 @@ module.exports = class MiniChat {
     if (!AckActions) return;
     this._dispatcher = BdApi.Webpack.Stores.UserStore._dispatcher;
     this._onMessage = (e) => {
-      if (this.popouts.has(e.channelId)) AckActions.ack(e.channelId);
+      if (!this.popouts.has(e.channelId)) return;
+      AckActions.ack(e.channelId, undefined, true, true, e.message?.id);
+      this._dispatcher.dispatch({
+        type: "CHANNEL_LOCAL_ACK",
+        channelId: e.channelId,
+      });
     };
     this._dispatcher.subscribe("MESSAGE_CREATE", this._onMessage);
   }
@@ -373,8 +434,18 @@ module.exports = class MiniChat {
     return {
       ...Webpack.getBulkKeyed({
         SplitView: {
-          filter: Filters.byStrings("channelViewSource", "Split View"),
+          filter: (e) => {
+            if (e?.$$typeof?.toString() !== "Symbol(react.memo)") return false;
+            const s = e.type?.toString?.() || "";
+            return s.includes("chatInputType") && s.includes("filterAfterTimestamp");
+          },
           searchExports: true,
+        },
+        Header: {
+          filter: (m) => headerLike(m) && m.toString().includes("isAuthenticated"),
+        },
+        Bar: {
+          filter: (m) => headerLike(m) && !m.toString().includes("isAuthenticated"),
         },
         ChatInputTypes: {
           filter: Filters.byKeys("FORM", "SIDEBAR"),
@@ -454,27 +525,8 @@ module.exports = class MiniChat {
     if (!mod) return;
     const Bar = mod[key];
     this.api.Patcher.before(mod, key, (_, [props]) => {
-      if (!props) return;
-      const popoutChId = props.toolbar?.props?.baseChannelId;
-      if (popoutChId && this.popouts.has(popoutChId)) {
-        const icon = this.guildIcon(popoutChId);
-        if (icon) {
-          props.children = h(
-            React.Fragment,
-            null,
-            h("img", { src: icon.url, alt: icon.name, className: "mc-icon" }),
-            props.children,
-          );
-        }
-        props.toolbar = h(Bar.Icon, {
-          icon: CloseIcon,
-          onClick: () => this.close(popoutChId),
-          tooltip: "Close",
-          "aria-label": "Close",
-        });
-        return;
-      }
-      if (!props.toolbar) return;
+      if (popupCtx._currentValue) return;
+      if (!props?.toolbar) return;
       const chId = this.modules.SelectedChannelStore.getChannelId();
       const ch = this.modules.ChannelStore.getChannel(chId);
       if (!ch || NON_CHAT.includes(ch.type)) return;
@@ -490,23 +542,26 @@ module.exports = class MiniChat {
         props.toolbar,
       );
     });
+    const header = mainDoc.querySelector('[class*="upperContainer__"]');
+    const inst = header && BdApi.ReactUtils.getOwnerInstance(header);
+    if (inst) inst.forceUpdate();
   }
 
   close(channelId) {
     const wk = this.popouts.get(channelId);
     if (!wk) return;
+    this._dispatcher?.dispatch({
+      type: "DISABLE_AUTOMATIC_ACK",
+      channelId,
+      windowId: wk,
+    });
     this.modules.PopoutActions.close(wk);
     this.popouts.delete(channelId);
   }
 
   open(channelId) {
-    const {
-      SplitView,
-      PopoutActions,
-      PopoutWindow,
-      PopoutWindowStore,
-      ChannelStore,
-    } = this.modules;
+    const { PopoutActions, PopoutWindow, PopoutWindowStore, ChannelStore } =
+      this.modules;
     const wk = "DISCORD_MC_" + channelId;
     if (PopoutWindowStore.getWindowOpen(wk)) {
       this.close(channelId);
@@ -517,17 +572,33 @@ module.exports = class MiniChat {
 
     const channel = ChannelStore.getChannel(channelId);
     const name = channel ? channel.name || "DM" : "Chat";
+    const headerNode = mainDoc
+      .querySelector('[class*="upperContainer__"] [class*="children__"]')
+      ?.cloneNode(true);
+    const guildIconUrl = this.guildIcon(channelId)?.url;
+    const onClose = () => this.close(channelId);
     PopoutActions.open(
       wk,
       () =>
         h(
           PopoutWindow,
           { windowKey: wk, withTitleBar: false, title: name, channelId },
-          h(Popout, { SplitView, channelId }),
+          h(Popout, {
+            modules: this.modules,
+            channelId,
+            headerNode,
+            guildIconUrl,
+            onClose,
+          }),
         ),
       { width: 500, height: 450 },
     );
     this.popouts.set(channelId, wk);
+    this._dispatcher?.dispatch({
+      type: "ENABLE_AUTOMATIC_ACK",
+      channelId,
+      windowId: wk,
+    });
 
     let tries = 0;
     const setup = () => {
