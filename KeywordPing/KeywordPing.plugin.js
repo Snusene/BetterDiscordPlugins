@@ -3,8 +3,9 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Get notified when messages match your keywords.
- * @version 2.6.0
- * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/KeywordPing/KeywordPing.plugin.js
+ * @version 2.6.2
+ * @invite xp2f3YFKMY
+ * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
  * @donate https://ko-fi.com/snues
  */
 
@@ -29,21 +30,21 @@ module.exports = class KeywordPing {
             .kp-category-content .kp-settings-group:last-child { margin-bottom: 0; }
             .kp-settings-group-title { color: var(--text-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; display: inline; margin-right: 6px; }
             .kp-settings-group-header { margin-bottom: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-            .kp-count { background: var(--brand-500); color: var(--white-500); font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; }
-            .kp-textarea { width: 100%; min-height: 120px; background: var(--channeltextarea-background); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px; color: var(--text-default); font-family: inherit; font-size: 14px; resize: none; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; transition: border-color 0.15s ease; }
-            .kp-textarea:hover { border-color: var(--brand-500); scrollbar-width: thin; scrollbar-color: var(--scrollbar-auto-thumb) transparent; }
-            .kp-textarea:focus { border-color: var(--brand-500); outline: none; }
+            .kp-count { background: var(--brand-500); color: var(--white); font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 10px; }
+            .kp-textarea { width: 100%; min-height: 120px; background: var(--input-background-default); border: 1px solid var(--input-border-default); border-radius: 8px; padding: 10px; color: var(--text-default); font-family: inherit; font-size: 14px; resize: none; box-sizing: border-box; overflow-y: auto; scrollbar-width: none; transition: border-color 0.15s ease; }
+            .kp-textarea:hover { border-color: var(--input-border-hover); scrollbar-width: thin; scrollbar-color: var(--scrollbar-auto-thumb) transparent; }
+            .kp-textarea:focus { border-color: var(--input-border-active); outline: none; }
             .kp-textarea::-webkit-scrollbar { width: 8px; background: transparent; }
             .kp-textarea::-webkit-scrollbar-track { background: transparent; }
             .kp-textarea::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
             .kp-textarea:hover::-webkit-scrollbar-thumb { background: var(--scrollbar-auto-thumb); }
-            .kp-textarea::placeholder { color: var(--text-muted); opacity: 0.4; }
+            .kp-textarea::placeholder { color: var(--input-placeholder-text-default); }
             .kp-hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
-            .kp-error { color: var(--red-400); font-size: 12px; margin-top: 4px; }
-            .kp-category { margin-bottom: 16px; border: 1px solid var(--border-subtle); border-radius: 8px; overflow: hidden; }
-            .kp-category-header { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--background-mod-normal); cursor: pointer; user-select: none; }
+            .kp-error { color: var(--text-feedback-critical); font-size: 12px; margin-top: 4px; }
+            .kp-category { margin-bottom: 16px; border: 1px solid var(--border-muted); border-radius: 8px; overflow: hidden; }
+            .kp-category-header { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--background-mod-subtle); cursor: pointer; user-select: none; }
             .kp-category-header:hover { filter: brightness(0.9); }
-            .kp-category-title { color: var(--text-default); font-size: 14px; font-weight: 600; }
+            .kp-category-title { color: var(--text-strong); font-size: 14px; font-weight: 600; }
             .kp-category-arrow { color: var(--text-muted); transition: transform 0.2s; }
             .kp-category-arrow.open { transform: rotate(90deg); }
             .kp-category-content { padding: 12px; display: none; background: var(--background-mod-muted); }
@@ -57,9 +58,9 @@ module.exports = class KeywordPing {
             .kp-server-icon-placeholder { width: 24px; height: 24px; border-radius: 50%; background: var(--background-mod-normal); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted); font-weight: 600; }
             .kp-server-item:hover { background: var(--interactive-background-hover); }
             .kp-server-name { color: var(--text-default); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            .kp-toggle { position: relative; width: 40px; height: 24px; background: #72767d; border-radius: 12px; cursor: pointer; transition: background 0.2s; }
+            .kp-toggle { position: relative; width: 40px; height: 24px; background: var(--background-mod-strong); border-radius: 12px; cursor: pointer; transition: background 0.2s; }
             .kp-toggle.on { background: var(--control-brand-foreground); }
-            .kp-toggle-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: var(--white-500); border-radius: 50%; transition: left 0.2s; }
+            .kp-toggle-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: var(--white); border-radius: 50%; transition: left 0.2s; }
             .kp-toggle.on .kp-toggle-knob { left: 18px; }
         `;
   }
@@ -76,13 +77,19 @@ module.exports = class KeywordPing {
     this.SortedGuildStore = Stores.SortedGuildStore;
     this.MessageStore = Stores.MessageStore;
     this.RelationshipStore = Stores.RelationshipStore;
+    this.MessageActions = BdApi.Webpack.getModule(
+      BdApi.Webpack.Filters.byKeys("fetchMessages", "jumpToMessage"),
+    );
+    this.cachedMessages = new Map();
     this.currentUserId = this.UserStore.getCurrentUser()?.id;
+    this.hydrated = false;
     this.setupInterceptor();
   }
 
   stop() {
     BdApi.DOM.removeStyle("KeywordPing");
     this.saveSettings();
+    this.saveMentions?.cancel?.();
 
     if (this.Dispatcher && this.interceptor) {
       const idx = this.Dispatcher._interceptors?.indexOf(this.interceptor);
@@ -101,6 +108,36 @@ module.exports = class KeywordPing {
     this.currentUserId = null;
     this.compiledKeywords = [];
     this.keywordMentions.clear();
+    this.cachedMessages?.clear();
+    this.cachedMessages = null;
+    this.MessageActions = null;
+    this.saveMentions = null;
+  }
+
+  async hydrateFromAPI() {
+    if (!this.MessageActions?.fetchMessage) return;
+    const cache = this.cachedMessages;
+    let pruned = false;
+    for (const [id, chId] of [...this.keywordMentions]) {
+      if (cache !== this.cachedMessages) return;
+      if (this.MessageStore?.getMessage(chId, id)) continue;
+      try {
+        const msg = await this.MessageActions.fetchMessage({
+          channelId: chId,
+          messageId: id,
+        });
+        if (cache !== this.cachedMessages) return;
+        if (msg) cache.set(id, msg);
+        else {
+          this.keywordMentions.delete(id);
+          pruned = true;
+        }
+      } catch {
+        this.keywordMentions.delete(id);
+        pruned = true;
+      }
+    }
+    if (pruned) this.saveMentions?.();
   }
 
   setupInterceptor() {
@@ -109,14 +146,26 @@ module.exports = class KeywordPing {
       if (event.type === "MESSAGE_CREATE") {
         this.handleMessage(event);
       }
+      if (event.type === "MESSAGE_DELETE") {
+        if (this.keywordMentions.delete(event.id)) this.saveMentions?.();
+      }
+      if (event.type === "LOAD_RECENT_MENTIONS" && !this.hydrated) {
+        this.hydrated = true;
+        this.hydrateFromAPI();
+      }
       if (event.type === "LOAD_RECENT_MENTIONS_SUCCESS" && !event.isAfter) {
+        if (!this.hydrated) {
+          this.hydrated = true;
+          this.hydrateFromAPI();
+        }
         const ids = new Set(event.messages.map((m) => m.id));
         const extras = [];
         for (const [id, chId] of this.keywordMentions) {
           if (ids.has(id)) continue;
-          const msg = this.MessageStore.getMessage(chId, id);
+          const msg =
+            this.MessageStore.getMessage(chId, id) ||
+            this.cachedMessages?.get(id);
           if (msg) extras.push(msg);
-          else this.keywordMentions.delete(id);
         }
         if (extras.length) {
           event.messages = [...event.messages, ...extras].sort((a, b) =>
@@ -136,6 +185,14 @@ module.exports = class KeywordPing {
       whitelistedUsers: saved.whitelistedUsers || [],
       guilds: saved.guilds || {},
     };
+    this.keywordMentions = new Map(
+      BdApi.Data.load("KeywordPing", "mentions") || [],
+    );
+    this.saveMentions = BdApi.Utils.debounce(
+      () =>
+        BdApi.Data.save("KeywordPing", "mentions", [...this.keywordMentions]),
+      1000,
+    );
   }
 
   saveSettings() {
@@ -420,6 +477,7 @@ module.exports = class KeywordPing {
       if (this.keywordMentions.size > 25) {
         this.keywordMentions.delete(this.keywordMentions.keys().next().value);
       }
+      this.saveMentions?.();
     }
   }
 
