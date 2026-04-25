@@ -26,7 +26,7 @@ Scroll to the last message when entering a channel.
 Better embeds for Twitch links.
 
 [autotranslate-version-badge]: https://img.shields.io/badge/version-0.1.0-brightgreen
-[keywordping-version-badge]: https://img.shields.io/badge/version-2.6.0-brightgreen
+[keywordping-version-badge]: https://img.shields.io/badge/version-2.6.2-brightgreen
 [incognito-version-badge]: https://img.shields.io/badge/version-1.0.2-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-3.0.2-brightgreen
 [minichat-version-badge]: https://img.shields.io/badge/version-0.8.4-brightgreen
