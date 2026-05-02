@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Automatically translate messages in chat.
- * @version 0.1.2
+ * @version 0.1.3
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/AutoTranslate
  * @donate https://ko-fi.com/snues
@@ -106,8 +106,24 @@ module.exports = class AutoTranslate {
       }
     `);
 
-    this.modules = AutoTranslate.getModules();
-    this.patch();
+    this.wait = new AbortController();
+    BdApi.Webpack.waitForModule(
+      (e) => {
+        const s = e?.type?.toString?.();
+        return (
+          s?.includes("SEND_FAILED") && s.includes("contentRef") && e.compare
+        );
+      },
+      { signal: this.wait.signal },
+    ).then((MessageContent) => {
+      if (!this.active || !MessageContent) return;
+      const Parser = BdApi.Webpack.getModule(
+        BdApi.Webpack.Filters.byKeys("parse", "parseTopic"),
+      );
+      if (!Parser) return;
+      this.modules = { MessageContent, Parser };
+      this.patch();
+    });
 
     this.onLocale = () => {
       const loc = this.LocaleStore.locale?.split("-")[0];
@@ -121,6 +137,7 @@ module.exports = class AutoTranslate {
 
   stop() {
     this.active = false;
+    this.wait?.abort();
     this.LocaleStore?.removeChangeListener(this.onLocale);
     clearTimeout(this.flushTimer);
     clearTimeout(this.pauseTimer);
@@ -534,24 +551,4 @@ module.exports = class AutoTranslate {
     return h(Panel);
   }
 
-  static getModules() {
-    const {
-      Webpack,
-      Webpack: { Filters },
-    } = BdApi;
-    return {
-      ...Webpack.getBulkKeyed({
-        Parser: { filter: Filters.byKeys("parse", "parseTopic") },
-      }),
-      MessageContent: Webpack.getModule(
-        (e) => {
-          const s = e?.type?.toString?.();
-          return (
-            s?.includes("SEND_FAILED") && s.includes("contentRef") && e.compare
-          );
-        },
-        { searchExports: true },
-      ),
-    };
-  }
 };
