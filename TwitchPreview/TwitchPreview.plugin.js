@@ -1,9 +1,9 @@
 /**
- * @name TwitchPlus
+ * @name TwitchEmbeds
  * @author Snues
  * @authorId 98862725609816064
  * @description Better embeds for Twitch links.
- * @version 3.0.2
+ * @version 3.0.4
  * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/TwitchPreview/TwitchPreview.plugin.js
  * @donate https://ko-fi.com/snues
  */
@@ -52,6 +52,27 @@ const LINK_D =
 module.exports = class TwitchPreview {
   start() {
     BdApi.DOM.addStyle("TwitchPlus", STYLES);
+    this.cache = new Map();
+    this.wait = new AbortController();
+    BdApi.Webpack.waitForModule((m) => m?.prototype?.renderEmbeds, {
+      signal: this.wait.signal,
+      searchExports: true,
+    }).then((Acc) => {
+      if (Acc?.prototype && this.cache) this.patchEmbeds(Acc);
+    });
+  }
+
+  stop() {
+    BdApi.DOM.removeStyle("TwitchPlus");
+    BdApi.Patcher.unpatchAll("TwitchPlus");
+    this.wait?.abort();
+    this.cache?.clear();
+    this.cache = null;
+    this.cls = null;
+  }
+
+  loadCls() {
+    if (this.cls) return true;
     const emb = BdApi.Webpack.getByKeys("embedFull", "embedVideoActions");
     const ico = BdApi.Webpack.getByKeys("iconWrapper", "iconWrapperActive");
     const anc = BdApi.Webpack.getByKeys("anchor", "anchorUnderlineOnHover");
@@ -59,23 +80,12 @@ module.exports = class TwitchPreview {
       (m) =>
         m.markup && typeof m.markup === "string" && m.markup.includes("markup"),
     );
+    if (!emb || !ico || !anc || !mkp) return false;
     this.cls = { emb, ico, anc, mkp };
-    this.cache = new Map();
-    this.patchEmbeds();
+    return true;
   }
 
-  stop() {
-    BdApi.DOM.removeStyle("TwitchPlus");
-    BdApi.Patcher.unpatchAll("TwitchPlus");
-    this.cache.clear();
-    this.cache = null;
-    this.cls = null;
-  }
-
-  patchEmbeds() {
-    const Acc = BdApi.Webpack.getModule((m) => m?.prototype?.renderEmbeds, {
-      searchExports: true,
-    });
+  patchEmbeds(Acc) {
     BdApi.Patcher.after(
       "TwitchPlus",
       Acc.prototype,
@@ -132,16 +142,18 @@ module.exports = class TwitchPreview {
 
     if (info === undefined) return null;
     if (info === null) return fallback;
+    if (!this.loadCls()) return fallback;
 
-    const title = info.streamTitle
-      ? `${info.displayName} - ${info.streamTitle}`
+    const isLive = !!info.stream;
+    const title = info.stream?.title
+      ? `${info.displayName} - ${info.stream.title}`
       : info.displayName;
     const url = `https://twitch.tv/${channel}`;
-    const thumb = info.isLive
+    const thumb = isLive
       ? `https://static-cdn.jtvnw.net/previews-ttv/live_user_${channel}-640x360.jpg?t=${Math.floor(Date.now() / 300000)}`
-      : info.offlineImage || info.bannerImage || info.profileImage;
-    if (!this.cls) return fallback;
+      : info.offlineImageURL || info.bannerImageURL || info.profileImageURL;
     const { emb, ico, anc, mkp } = this.cls;
+    const linkCls = `${anc.anchor} ${anc.anchorUnderlineOnHover}`;
 
     return e(
       "article",
@@ -165,7 +177,7 @@ module.exports = class TwitchPreview {
             e(
               "a",
               {
-                className: `${anc.anchor} ${anc.anchorUnderlineOnHover} ${emb.embedTitleLink} twitch-embed-title`,
+                className: `${linkCls} ${emb.embedTitleLink} twitch-embed-title`,
                 href: url,
                 target: "_blank",
                 rel: "noreferrer noopener",
@@ -223,7 +235,7 @@ module.exports = class TwitchPreview {
                     e(
                       "a",
                       {
-                        className: `${anc.anchor} ${anc.anchorUnderlineOnHover} ${ico.iconWrapperActive}`,
+                        className: `${linkCls} ${ico.iconWrapperActive}`,
                         href: url,
                         target: "_blank",
                         rel: "noreferrer noopener",
@@ -236,7 +248,7 @@ module.exports = class TwitchPreview {
                   ),
                 ),
               ),
-            info.isLive
+            isLive
               ? e("div", { className: "twitch-live-badge" }, "LIVE")
               : null,
           ),
@@ -257,16 +269,7 @@ module.exports = class TwitchPreview {
           query: `query { user(login: "${channel}") { displayName stream { title } offlineImageURL bannerImageURL profileImageURL(width: 600) } }`,
         }),
       });
-      const user = (await res.json()).data?.user;
-      if (!user) return null;
-      return {
-        isLive: !!user.stream,
-        displayName: user.displayName,
-        streamTitle: user.stream?.title,
-        offlineImage: user.offlineImageURL,
-        bannerImage: user.bannerImageURL,
-        profileImage: user.profileImageURL,
-      };
+      return (await res.json()).data?.user || null;
     } catch {
       return null;
     }
