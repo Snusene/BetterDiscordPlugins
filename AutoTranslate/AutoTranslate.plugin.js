@@ -3,9 +3,9 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Automatically translate messages in chat.
- * @version 0.1.0
+ * @version 0.1.2
  * @invite xp2f3YFKMY
- * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/AutoTranslate/AutoTranslate.plugin.js
+ * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/AutoTranslate
  * @donate https://ko-fi.com/snues
  */
 
@@ -15,52 +15,36 @@ const h = React.createElement;
 const EMOJI_ONLY_RE =
   /^(<a?:\w+:\d+>|\s|[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FEFF}]|[\u{200D}\u{20E3}])+$/u;
 
-let langNames = {};
-let parser;
-let editedClass;
+const ASCII_ONLY = /^[\x20-\x7E]+$/;
+const SKIP =
+  /^(wdym|wym|wyd|wyll|wyp|omw|otw|omfg|uwu|owo|idgaf|dgaf|idek|ime|istg|iykyk|hmu|ama|til|kys|sus|soz|urw|ynk|zoomer|gigachad|nepo|eta|vid|hru|ezpz)$/i;
 
 const NOISE =
   /^!\w+\s*|https?:\/\/\S+|```[\s\S]*?```|`[^`]+`|<@!?\d+>|<#\d+>|<@&\d+>|\S*\/\S*\.[a-z]{1,5}\b|\S+\/\S+\/\S+|[a-zA-Z]:\\\S*/gi;
 
 const strip = (text) => text.replace(NOISE, "").trim();
 
-const lang = (code) => langNames[code] || code;
-
 function junk(text) {
-  if (/(.)\1{3,}/.test(text)) return true;
-  if (text.replace(/(.)\1+/g, "$1").length < 3) return true;
+  if (/(.)\1{3,}/.test(text) || SKIP.test(text)) return true;
+  if (ASCII_ONLY.test(text) && text.replace(/(.)\1+/g, "$1").length < 3)
+    return true;
   const words = text.toLowerCase().split(/\s+/).filter(Boolean);
-  return words.length >= 2 && words.every((w) => w === words[0]);
+  return words.length >= 3 && words.every((w) => w === words[0]);
 }
 
 function passthrough(raw, translated) {
   const rawWords = raw.toLowerCase().match(/\p{L}+/gu);
   if (!rawWords?.length) return false;
+  const rawLower = raw.toLowerCase();
   const transLower = translated.toLowerCase();
   const transWords = new Set(transLower.match(/\p{L}+/gu) || []);
-  return rawWords.every((w) =>
+  const rawSet = new Set(rawWords);
+  const fwd = rawWords.every((w) =>
     w.length >= 3 ? transLower.includes(w) : transWords.has(w),
   );
-}
-
-function Translated({ translation, label }) {
-  return h(
-    "span",
-    null,
-    h("span", { className: "at-trans" }, parser.parse(translation.text)),
-    h("span", { className: "at-orig" }, parser.parse(translation.raw)),
-    " ",
-    h(
-      "span",
-      {
-        className: editedClass,
-        style: { color: "var(--chat-text-muted)" },
-      },
-      "(",
-      h("span", { className: "at-trans" }, label),
-      h("span", { className: "at-orig" }, lang(translation.src)),
-      ")",
-    ),
+  if (fwd) return true;
+  return [...transWords].every((w) =>
+    w.length >= 3 ? rawLower.includes(w) : rawSet.has(w),
   );
 }
 
@@ -74,6 +58,7 @@ module.exports = class AutoTranslate {
     this.skipped = new Map();
     this.active = this.paused = this.busy = false;
     this.backoff = 0;
+    this.langNames = {};
     this.settings = {
       skipLangs: this.api.Data.load("settings")?.skipLangs || [],
     };
@@ -111,6 +96,14 @@ module.exports = class AutoTranslate {
       .at-close:hover {
         opacity: 1;
       }
+      .at-note {
+        font-size: 0.625rem;
+        margin-left: 0.25rem;
+        line-height: 1;
+        color: var(--chat-text-muted);
+        text-transform: lowercase;
+        user-select: none;
+      }
     `);
 
     this.modules = AutoTranslate.getModules();
@@ -120,13 +113,7 @@ module.exports = class AutoTranslate {
       const loc = this.LocaleStore.locale?.split("-")[0];
       if (!loc || loc === this.targetLang) return;
       this.targetLang = loc;
-      this.cache = {};
-      this.skipped.clear();
-      this.pending.clear();
-      this.dirty?.clear();
-      this.retries = {};
-      this.queue = [];
-      this.backoff = 0;
+      this.reset();
       this.prepLang();
     };
     this.LocaleStore.addChangeListener(this.onLocale);
@@ -140,13 +127,19 @@ module.exports = class AutoTranslate {
     clearTimeout(this.drainTimer);
     this.api.Patcher.unpatchAll();
     this.api.DOM.removeStyle();
+    this.reset();
+    this.parser = null;
+    this.langNames = {};
+  }
+
+  reset() {
     this.cache = {};
     this.queue = [];
     this.retries = {};
+    this.backoff = 0;
     this.pending.clear();
     this.skipped.clear();
     this.dirty?.clear();
-    parser = editedClass = undefined;
   }
 
   async prepLang() {
@@ -159,7 +152,7 @@ module.exports = class AutoTranslate {
         const t = r?.results?.[0]?.text;
         if (t) this.label = t.toLowerCase();
       })
-      .catch(() => { });
+      .catch(() => {});
 
     try {
       const r = await BdApi.Net.fetch(
@@ -167,14 +160,13 @@ module.exports = class AutoTranslate {
       );
       if (!r.ok || !this.active || this.targetLang !== target) return;
       const body = await r.json();
-      langNames = body.tl || body.sl || {};
-    } catch { }
+      this.langNames = body.tl || body.sl || {};
+    } catch {}
   }
 
   patch() {
-    const { MessageContent, Parser, styles } = this.modules;
-    parser = Parser;
-    editedClass = styles.edited;
+    const { MessageContent, Parser } = this.modules;
+    this.parser = Parser;
     this.dirty = new Map();
 
     this.api.Patcher.instead(
@@ -185,13 +177,30 @@ module.exports = class AutoTranslate {
     );
 
     const render = (ret, translation) => {
-      if (Array.isArray(ret?.props?.children)) {
-        ret.props.children[0] = h(Translated, {
-          key: "at-content",
-          translation,
-          label: this.label,
-        });
-      }
+      if (!Array.isArray(ret?.props?.children)) return;
+      ret.props.children[0] = h(
+        "span",
+        { key: "at-content" },
+        h(
+          "span",
+          { className: "at-trans" },
+          this.parser.parse(translation.text),
+        ),
+        h("span", { className: "at-orig" }, this.parser.parse(translation.raw)),
+        " ",
+        h(
+          "span",
+          { className: "at-note" },
+          "(",
+          h("span", { className: "at-trans" }, this.label),
+          h(
+            "span",
+            { className: "at-orig" },
+            this.langNames[translation.src] || translation.src,
+          ),
+          ")",
+        ),
+      );
     };
 
     this.api.Patcher.after(MessageContent, "type", (_, [props], ret) => {
@@ -284,7 +293,7 @@ module.exports = class AutoTranslate {
       batch.map((b) => b.raw),
       target,
     ).catch(() => null);
-    if (!this.active) return;
+    if (!this.active || target !== this.targetLang) return;
 
     if (result?.rateLimited) {
       this.paused = true;
@@ -310,6 +319,9 @@ module.exports = class AutoTranslate {
       return;
     }
 
+    const isTarget = await this.detectTarget(batch, result.results, target);
+    if (!this.active || target !== this.targetLang) return;
+
     this.backoff = 0;
     for (let i = 0; i < batch.length; i++) {
       const { msgId, stripped, cid, raw } = batch[i];
@@ -322,6 +334,7 @@ module.exports = class AutoTranslate {
       }
       if (
         r.src === target ||
+        isTarget.has(i) ||
         this.settings.skipLangs.includes(r.src) ||
         passthrough(raw, r.text)
       ) {
@@ -336,27 +349,57 @@ module.exports = class AutoTranslate {
     this.flush();
   }
 
-  async translate(texts, target) {
-    const params = new URLSearchParams({
-      client: "gtx",
-      dt: "t",
-      sl: "auto",
-      tl: target,
-      ie: "UTF-8",
-      oe: "UTF-8",
-    });
-    for (const t of texts) params.append("q", t);
-
+  async translate(texts, target, source = "auto") {
+    const params = new URLSearchParams([
+      ["client", "gtx"],
+      ["dt", "t"],
+      ["sl", source],
+      ["tl", target],
+      ["ie", "UTF-8"],
+      ["oe", "UTF-8"],
+      ...texts.map((t) => ["q", t]),
+    ]);
     const resp = await BdApi.Net.fetch(
       `https://translate.googleapis.com/translate_a/t?${params}`,
     );
     if (resp.status === 429) return { rateLimited: true };
     if (!resp.ok) return null;
-
     const body = await resp.json();
-    return Array.isArray(body) && body.length === texts.length
-      ? { results: body.map(([text, src]) => ({ text, src })) }
-      : null;
+    if (!Array.isArray(body) || body.length !== texts.length) return null;
+    return {
+      results: body.map((e) =>
+        Array.isArray(e) ? { text: e[0], src: e[1] } : { text: e, src: source },
+      ),
+    };
+  }
+
+  async detectTarget(batch, results, target) {
+    const cand = [...batch.keys()].filter((i) => {
+      const { raw } = batch[i];
+      const src = results[i]?.src;
+      return (
+        src &&
+        src !== target &&
+        raw.length >= 4 &&
+        raw.length < 30 &&
+        ASCII_ONLY.test(raw) &&
+        !raw.includes(" ")
+      );
+    });
+    if (!cand.length) return new Set();
+    const tl = target === "en" ? "pl" : "en";
+    const v = await this.translate(
+      cand.map((i) => batch[i].raw),
+      tl,
+      target,
+    ).catch(() => null);
+    if (!v?.results) return new Set();
+    return new Set(
+      cand.filter((bi, j) => {
+        const t = v.results[j]?.text?.toLowerCase();
+        return t && t !== batch[bi].raw.toLowerCase();
+      }),
+    );
   }
 
   retry(msgId, stripped, cid, raw) {
@@ -410,9 +453,15 @@ module.exports = class AutoTranslate {
     const self = this;
     function Panel() {
       const [list, setList] = React.useState(self.settings.skipLangs);
-      const up = (v) => { setList(v); self.setSkipLangs(v); };
-      const options = Object.entries(langNames)
-        .filter(([c]) => c !== "auto" && c !== self.targetLang && !list.includes(c))
+      const up = (v) => {
+        setList(v);
+        self.setSkipLangs(v);
+      };
+      const langOf = (c) => self.langNames[c] || c;
+      const options = Object.entries(self.langNames)
+        .filter(
+          ([c]) => c !== "auto" && c !== self.targetLang && !list.includes(c),
+        )
         .map(([c, name]) => ({ label: name, value: c }))
         .sort((a, b) => a.label.localeCompare(b.label));
 
@@ -422,40 +471,53 @@ module.exports = class AutoTranslate {
         h(
           "div",
           {
-            style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 },
-          },
-          h("span", {
             style: {
-              color: "var(--text-default)",
-              fontSize: 14,
-              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 12,
             },
-          }, "Do Not Translate"),
-          h("div", { style: { flex: 1 } },
+          },
+          h(
+            "span",
+            {
+              style: {
+                color: "var(--text-default)",
+                fontSize: 14,
+                fontWeight: 600,
+              },
+            },
+            "Do Not Translate",
+          ),
+          h(
+            "div",
+            { style: { flex: 1 } },
             h(BdApi.Components.DropdownInput, {
-              key: list.length,
               value: "",
               options: [{ label: "Add language...", value: "" }, ...options],
-              onChange: (v) => { if (v) up([...list, v]); },
+              onChange: (v) => {
+                if (v) up([...list, v]);
+              },
             }),
           ),
         ),
         h(
           "div",
           { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
-          self.targetLang && h(
-            "span",
-            {
-              className: "at-tag",
-              style: { opacity: 0.8, paddingInline: 14 },
-            },
-            lang(self.targetLang),
-          ),
+          self.targetLang &&
+            h(
+              "span",
+              {
+                className: "at-tag",
+                style: { opacity: 0.8, paddingInline: 14 },
+              },
+              langOf(self.targetLang),
+            ),
           list.map((code) =>
             h(
               "span",
               { key: code, className: "at-tag" },
-              lang(code),
+              langOf(code),
               h(
                 "span",
                 {
@@ -489,9 +551,6 @@ module.exports = class AutoTranslate {
           );
         },
         { searchExports: true },
-      ),
-      styles: Webpack.getModule(
-        (m) => m?.edited && m?.messageContent && m?.contents,
       ),
     };
   }
