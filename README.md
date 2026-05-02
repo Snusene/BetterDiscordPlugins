@@ -22,7 +22,7 @@ Let DMs from specific people bypass Do Not Disturb.
 ## [ScrollToLatest](./ScrollToLatest) ![Version][scrolltolatest-version-badge]
 Scroll to the last message when entering a channel.
 
-## [TwitchPlus](./TwitchPreview) ![Version][twitchpreview-version-badge]
+## [TwitchEmbeds](./TwitchPreview) ![Version][twitchpreview-version-badge]
 Better embeds for Twitch links.
 
 [autotranslate-version-badge]: https://img.shields.io/badge/version-0.1.3-brightgreen
