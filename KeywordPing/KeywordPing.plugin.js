@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Get notified when messages match your keywords.
- * @version 2.6.2
+ * @version 3.0.0
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
  * @donate https://ko-fi.com/snues
@@ -11,19 +11,8 @@
 
 module.exports = class KeywordPing {
   constructor() {
-    this.settings = null;
     this.compiledKeywords = [];
-    this.currentUserId = null;
-    this.UserStore = null;
-    this.ChannelStore = null;
-    this.GuildStore = null;
-    this.GuildMemberStore = null;
-    this.SortedGuildStore = null;
-    this.Dispatcher = null;
-    this.interceptor = null;
     this.keywordMentions = new Map();
-    this.MessageStore = null;
-    this.RelationshipStore = null;
     this.css = `
             .kp-settings-panel { padding: 10px; }
             .kp-settings-group { margin-bottom: 20px; }
@@ -77,12 +66,40 @@ module.exports = class KeywordPing {
     this.SortedGuildStore = Stores.SortedGuildStore;
     this.MessageStore = Stores.MessageStore;
     this.RelationshipStore = Stores.RelationshipStore;
-    this.MessageActions = BdApi.Webpack.getModule(
-      BdApi.Webpack.Filters.byKeys("fetchMessages", "jumpToMessage"),
-    );
+    this.ReadStateStore = Stores.ReadStateStore;
+    this.GuildReadStateStore = Stores.GuildReadStateStore;
     this.cachedMessages = new Map();
-    this.currentUserId = this.UserStore.getCurrentUser()?.id;
     this.hydrated = false;
+    this._force = new Set();
+    this._skipIds = new Set();
+    this._badges = new Set();
+    this._muted = false;
+    this._inbox = false;
+    this._ready = false;
+    const api = new BdApi("KeywordPing");
+    this._patcher = api.Patcher;
+    this._logger = api.Logger;
+    this._patcher.after(
+      this.GuildReadStateStore,
+      "hasUnread",
+      (_, args, ret) => {
+        if (ret) return ret;
+        for (const chId of this._badges) {
+          const c = this.ChannelStore.getChannel(chId);
+          if (c?.guild_id === args[0]) return true;
+        }
+        return ret;
+      },
+    );
+    this._patcher.after(
+      this.ReadStateStore,
+      "getMentionCount",
+      (_, args, ret) => {
+        return this._badges.has(args[0]) ? ret + 1 : ret;
+      },
+    );
+    this.ensure();
+    this.hydrateFromAPI();
     this.setupInterceptor();
   }
 
@@ -90,6 +107,14 @@ module.exports = class KeywordPing {
     BdApi.DOM.removeStyle("KeywordPing");
     this.saveSettings();
     this.saveMentions?.cancel?.();
+    this._patcher?.unpatchAll();
+    this._force = null;
+    this._patcher = null;
+    this._logger = null;
+    this._skipIds = null;
+    this._badges = null;
+    this.ReadStateStore = null;
+    this.GuildReadStateStore = null;
 
     if (this.Dispatcher && this.interceptor) {
       const idx = this.Dispatcher._interceptors?.indexOf(this.interceptor);
@@ -105,22 +130,27 @@ module.exports = class KeywordPing {
     this.SortedGuildStore = null;
     this.MessageStore = null;
     this.RelationshipStore = null;
-    this.currentUserId = null;
     this.compiledKeywords = [];
     this.keywordMentions.clear();
-    this.cachedMessages?.clear();
     this.cachedMessages = null;
     this.MessageActions = null;
+    this.IconUtils = null;
+    this.ChannelTypes = null;
+    this.MessageTypes = null;
+    this.MessageFlags = null;
+    this.NotificationLevels = null;
     this.saveMentions = null;
   }
 
   async hydrateFromAPI() {
-    if (!this.MessageActions?.fetchMessage) return;
+    if (this.hydrated || !this.MessageActions?.fetchMessage) return;
+    this.hydrated = true;
     const cache = this.cachedMessages;
+    const entries = [...this.keywordMentions];
     let pruned = false;
-    for (const [id, chId] of [...this.keywordMentions]) {
+    const fetchOne = async ([id, chId]) => {
       if (cache !== this.cachedMessages) return;
-      if (this.MessageStore?.getMessage(chId, id)) continue;
+      if (this.MessageStore?.getMessage(chId, id)) return;
       try {
         const msg = await this.MessageActions.fetchMessage({
           channelId: chId,
@@ -132,46 +162,148 @@ module.exports = class KeywordPing {
           this.keywordMentions.delete(id);
           pruned = true;
         }
-      } catch {
-        this.keywordMentions.delete(id);
-        pruned = true;
+      } catch (e) {
+        if (e?.status === 404 || e?.status === 403) {
+          this.keywordMentions.delete(id);
+          pruned = true;
+        }
       }
+    };
+    for (let i = 0; i < entries.length; i += 5) {
+      await Promise.all(entries.slice(i, i + 5).map(fetchOne));
     }
     if (pruned) this.saveMentions?.();
+    BdApi.Webpack.Stores.RecentMentionsStore?.emitChange();
+  }
+
+  ensure() {
+    if (this._ready) return [];
+    const { Filters } = BdApi.Webpack;
+    const filters = {
+      MessageActions: {
+        filter: Filters.byKeys("fetchMessages", "jumpToMessage"),
+      },
+      IconUtils: {
+        filter: Filters.byKeys("getUserAvatarURL", "getGuildIconURL"),
+      },
+      ChannelTypes: {
+        filter: Filters.byKeys("PUBLIC_THREAD", "GUILD_FORUM"),
+        searchExports: true,
+      },
+      MessageTypes: {
+        filter: Filters.byKeys("THREAD_CREATED"),
+        searchExports: true,
+      },
+      MessageFlags: {
+        filter: Filters.byKeys("SUPPRESS_NOTIFICATIONS", "EPHEMERAL"),
+        searchExports: true,
+      },
+      NotificationLevels: {
+        filter: Filters.byKeys("ALL_MESSAGES", "ONLY_MENTIONS"),
+        searchExports: true,
+      },
+    };
+    const need = {};
+    for (const k in filters) if (!this[k]) need[k] = filters[k];
+    if (Object.keys(need).length) {
+      Object.assign(this, BdApi.Webpack.getBulkKeyed(need));
+    }
+    const missing = Object.keys(filters).filter((k) => !this[k]);
+
+    if (!this._muted && this.NotificationLevels) {
+      const [notifModule, notifKey] = BdApi.Webpack.getWithKey(
+        BdApi.Webpack.Filters.byStrings(
+          "parent_id",
+          "isGuildOrCategoryOrChannelMuted",
+        ),
+      );
+      if (notifModule) {
+        this._patcher.instead(
+          notifModule,
+          notifKey,
+          (thisVal, args, original) =>
+            this._force.has(args[0]?.id)
+              ? this.NotificationLevels.ALL_MESSAGES
+              : original.apply(thisVal, args),
+        );
+        this._muted = true;
+      }
+    }
+    if (!this._muted) missing.push("notifModule");
+
+    if (!this._inbox) {
+      const RMS = BdApi.Webpack.Stores.RecentMentionsStore;
+      if (RMS) {
+        this._patcher.after(
+          RMS,
+          "getSettingsFilteredMentions",
+          (_, args, ret) => {
+            if (!ret) return ret;
+            const present = new Set(ret.map((m) => m.id));
+            const mine = [];
+            for (const [id, chId] of this.keywordMentions) {
+              if (present.has(id)) continue;
+              const msg =
+                this.MessageStore.getMessage(chId, id) ||
+                this.cachedMessages.get(id);
+              if (msg) mine.push(msg);
+            }
+            if (!mine.length) return ret;
+            return [...ret, ...mine].sort((a, b) =>
+              b.id.localeCompare(a.id, undefined, { numeric: true }),
+            );
+          },
+        );
+        this._inbox = true;
+      }
+    }
+    if (!this._inbox) missing.push("RecentMentionsStore");
+
+    if (!missing.length) this._ready = true;
+    return missing;
   }
 
   setupInterceptor() {
     this.Dispatcher = this.UserStore._dispatcher;
     this.interceptor = (event) => {
-      if (event.type === "MESSAGE_CREATE") {
-        this.handleMessage(event);
-      }
-      if (event.type === "MESSAGE_DELETE") {
-        if (this.keywordMentions.delete(event.id)) this.saveMentions?.();
-      }
-      if (event.type === "LOAD_RECENT_MENTIONS" && !this.hydrated) {
-        this.hydrated = true;
-        this.hydrateFromAPI();
-      }
-      if (event.type === "LOAD_RECENT_MENTIONS_SUCCESS" && !event.isAfter) {
-        if (!this.hydrated) {
-          this.hydrated = true;
+      try {
+        if (event.type === "MESSAGE_CREATE") {
+          this.handleMessage(event);
+        }
+        if (event.type === "THREAD_CREATE" && event.isNewlyCreated) {
+          this.forumPost(event.channel);
+        }
+        if (event.type === "CHANNEL_SELECT" || event.type === "MESSAGE_ACK") {
+          const cid = event.channelId || event.id;
+          if (cid && this._badges.delete(cid)) {
+            this.GuildReadStateStore.emitChange();
+            this.ReadStateStore.emitChange();
+          }
+        }
+        if (event.type === "MESSAGE_DELETE") {
+          if (this.keywordMentions.delete(event.id)) this.saveMentions?.();
+        }
+        if (event.type === "LOAD_RECENT_MENTIONS_SUCCESS" && !event.isAfter) {
+          const m = this.ensure();
+          if (m.length) return this._logger.error(m.join(", ") + " missing");
           this.hydrateFromAPI();
+          const ids = new Set(event.messages.map((m) => m.id));
+          const extras = [];
+          for (const [id, chId] of this.keywordMentions) {
+            if (ids.has(id)) continue;
+            const msg =
+              this.MessageStore.getMessage(chId, id) ||
+              this.cachedMessages.get(id);
+            if (msg) extras.push(msg);
+          }
+          if (extras.length) {
+            event.messages = [...event.messages, ...extras].sort((a, b) =>
+              b.id.localeCompare(a.id, undefined, { numeric: true }),
+            );
+          }
         }
-        const ids = new Set(event.messages.map((m) => m.id));
-        const extras = [];
-        for (const [id, chId] of this.keywordMentions) {
-          if (ids.has(id)) continue;
-          const msg =
-            this.MessageStore.getMessage(chId, id) ||
-            this.cachedMessages?.get(id);
-          if (msg) extras.push(msg);
-        }
-        if (extras.length) {
-          event.messages = [...event.messages, ...extras].sort((a, b) =>
-            b.id.localeCompare(a.id, undefined, { numeric: true }),
-          );
-        }
+      } catch (e) {
+        this._logger.stacktrace("interceptor", e);
       }
       return false;
     };
@@ -359,7 +491,11 @@ module.exports = class KeywordPing {
                     guild.icon
                       ? e("img", {
                           className: "kp-server-icon",
-                          src: `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=32`,
+                          src: plugin.IconUtils?.getGuildIconURL({
+                            id: guild.id,
+                            icon: guild.icon,
+                            size: 32,
+                          }),
                         })
                       : e(
                           "div",
@@ -413,51 +549,68 @@ module.exports = class KeywordPing {
 
   handleMessage(event) {
     const { message } = event;
-    if (!message?.author || (!message.content && !message.embeds?.length))
-      return;
+    if (!message?.author) return;
     if (event.optimistic) return;
+    if (this._skipIds.has(message.id)) return;
+    const m = this.ensure();
+    if (m.length) return this._logger.error(m.join(", ") + " missing");
+    const newThreadName =
+      message.type === this.MessageTypes.THREAD_CREATED
+        ? message.thread?.name
+        : null;
+    if (
+      !message.content &&
+      !message.embeds?.length &&
+      !newThreadName &&
+      !message.poll &&
+      !message.message_snapshots?.length
+    )
+      return;
 
-    if (!this.currentUserId) {
-      this.currentUserId = this.UserStore.getCurrentUser()?.id;
-      if (!this.currentUserId) return;
-    }
+    const currentUser = this.UserStore.getCurrentUser();
+    if (!currentUser) return;
 
     const channel = this.ChannelStore.getChannel(message.channel_id);
-    if (!channel?.guild_id) return;
-    if (!message.guild_id) message.guild_id = channel.guild_id;
+    const guildId = message.guild_id || channel?.guild_id;
+    if (!guildId) return;
+    if (!message.guild_id) message.guild_id = guildId;
 
-    if (message.author.id === this.currentUserId) return;
-    if (message.author.bot) return;
+    if (message.author.id === currentUser.id) return;
     if (this.RelationshipStore?.isBlocked(message.author.id)) return;
 
-    const guildSettings = this.settings.guilds[channel.guild_id];
-    if (guildSettings?.enabled === false) return;
+    if (this.settings.guilds[guildId]?.enabled === false) return;
 
+    const threadName =
+      channel?.type === this.ChannelTypes.PUBLIC_THREAD &&
+      channel.id === message.id &&
+      this.ChannelStore.getChannel(channel.parent_id)?.type ===
+        this.ChannelTypes.GUILD_FORUM
+        ? channel.name
+        : null;
     let matched = this.matchesUser(
       this.settings.whitelistedUsers,
       message.author,
-      channel.guild_id,
+      guildId,
     );
+    if (!matched && message.author.bot) return;
     if (!matched) {
+      const sources = [
+        message.content,
+        threadName,
+        newThreadName,
+        message.poll?.question?.text,
+        ...(message.poll?.answers?.map((a) => a.poll_media?.text) || []),
+        ...(message.embeds?.flatMap((e) => this.embedTexts(e)) || []),
+        ...(message.message_snapshots?.flatMap((s) => [
+          s.message?.content,
+          ...(s.message?.embeds?.flatMap((e) => this.embedTexts(e)) || []),
+        ]) || []),
+      ].filter(Boolean);
       for (const compiled of this.compiledKeywords) {
         if (compiled.filter && !this.passesFilter(compiled.filter, message))
           continue;
         compiled.regex.lastIndex = 0;
-        if (
-          compiled.regex.test(message.content || "") ||
-          message.embeds?.some((e) =>
-            [
-              e.title,
-              e.description,
-              e.author?.name,
-              e.footer?.text,
-              e.provider?.name,
-              ...(e.fields?.flatMap((f) => [f.name, f.value]) || []),
-            ]
-              .filter(Boolean)
-              .some((t) => compiled.regex.test(t)),
-          )
-        ) {
+        if (sources.some((s) => compiled.regex.test(s))) {
           matched = true;
           break;
         }
@@ -465,20 +618,105 @@ module.exports = class KeywordPing {
     }
 
     if (matched) {
-      const currentUser = this.UserStore.getCurrentUser();
       if (
-        currentUser &&
-        !message.mentions?.some((m) => m.id === currentUser.id)
+        channel &&
+        (channel.type === this.ChannelTypes.ANNOUNCEMENT_THREAD ||
+          channel.type === this.ChannelTypes.PUBLIC_THREAD ||
+          channel.type === this.ChannelTypes.PRIVATE_THREAD)
       ) {
+        this._force.add(channel.id);
+        setTimeout(() => this._force?.delete(channel.id), 100);
+      }
+      if (!message.mentions?.some((m) => m.id === currentUser.id)) {
         message.mentions = [...(message.mentions || []), currentUser];
         message.mentioned = true;
       }
+      message.flags &= ~this.MessageFlags.SUPPRESS_NOTIFICATIONS;
+      this.cachedMessages.set(message.id, message);
       this.keywordMentions.set(message.id, message.channel_id);
       if (this.keywordMentions.size > 25) {
         this.keywordMentions.delete(this.keywordMentions.keys().next().value);
       }
       this.saveMentions?.();
     }
+  }
+
+  forumPost(channel) {
+    const m = this.ensure();
+    if (m.length) return this._logger.error(m.join(", ") + " missing");
+    if (channel?.type !== this.ChannelTypes.PUBLIC_THREAD) return;
+    if (
+      this.ChannelStore.getChannel(channel.parent_id)?.type !==
+      this.ChannelTypes.GUILD_FORUM
+    )
+      return;
+    const currentUser = this.UserStore.getCurrentUser();
+    if (!currentUser || channel.ownerId === currentUser.id) return;
+    if (this.RelationshipStore?.isBlocked(channel.ownerId)) return;
+    if (this.settings.guilds[channel.guild_id]?.enabled === false) return;
+    if (this._skipIds.has(channel.id)) return;
+
+    const author = this.UserStore.getUser(channel.ownerId) || {
+      id: channel.ownerId,
+    };
+    const fakeMsg = {
+      author,
+      channel_id: channel.id,
+      guild_id: channel.guild_id,
+    };
+    let matched = this.matchesUser(
+      this.settings.whitelistedUsers,
+      author,
+      channel.guild_id,
+    );
+    if (!matched && author.bot) return;
+    if (!matched) {
+      for (const c of this.compiledKeywords) {
+        if (c.filter && !this.passesFilter(c.filter, fakeMsg)) continue;
+        c.regex.lastIndex = 0;
+        if (c.regex.test(channel.name)) {
+          matched = true;
+          break;
+        }
+      }
+    }
+    if (!matched) return;
+
+    this._skipIds.add(channel.id);
+    setTimeout(() => this._skipIds?.delete(channel.id), 5000);
+    this.keywordMentions.set(channel.id, channel.id);
+    if (this.keywordMentions.size > 25) {
+      this.keywordMentions.delete(this.keywordMentions.keys().next().value);
+    }
+    this.saveMentions?.();
+    this._badges.add(channel.id);
+
+    const cache = this.cachedMessages;
+    this.MessageActions.fetchMessage({
+      channelId: channel.id,
+      messageId: channel.id,
+    })
+      .then((msg) => {
+        if (!msg || cache !== this.cachedMessages) return;
+        cache.set(channel.id, msg);
+        const currentUser = this.UserStore.getCurrentUser();
+        if (
+          currentUser &&
+          !msg.mentions?.some((m) => m.id === currentUser.id)
+        ) {
+          msg.mentions = [...(msg.mentions || []), currentUser];
+          msg.mentioned = true;
+        }
+        this._force.add(channel.id);
+        setTimeout(() => this._force?.delete(channel.id), 100);
+        this.Dispatcher.dispatch({
+          type: "MESSAGE_CREATE",
+          message: msg,
+          channelId: channel.id,
+          optimistic: false,
+        });
+      })
+      .catch(() => {});
   }
 
   parseKeyword(keyword) {
@@ -514,6 +752,17 @@ module.exports = class KeywordPing {
     }
     if (filter.type === "#") return message.channel_id === filter.id;
     return message.guild_id === filter.id;
+  }
+
+  embedTexts(e) {
+    return [
+      e.title,
+      e.description,
+      e.author?.name,
+      e.footer?.text,
+      e.provider?.name,
+      ...(e.fields?.flatMap((f) => [f.name, f.value]) || []),
+    ].filter(Boolean);
   }
 
   matchesUser(list, author, guildId = null) {
