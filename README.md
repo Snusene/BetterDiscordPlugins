@@ -25,7 +25,7 @@ Scroll to the last message when entering a channel.
 ## [TwitchEmbeds](./TwitchPreview) ![Version][twitchpreview-version-badge]
 Better embeds for Twitch links.
 
-[autotranslate-version-badge]: https://img.shields.io/badge/version-0.1.3-brightgreen
+[autotranslate-version-badge]: https://img.shields.io/badge/version-0.2.0-brightgreen
 [keywordping-version-badge]: https://img.shields.io/badge/version-3.0.0-brightgreen
 [incognito-version-badge]: https://img.shields.io/badge/version-1.0.2-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-3.0.4-brightgreen
