@@ -3,8 +3,9 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Let DMs from specific people bypass Do Not Disturb.
- * @version 1.0.7
- * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/PriorityDM/PriorityDM.plugin.js
+ * @version 1.0.8
+ * @invite xp2f3YFKMY
+ * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/PriorityDM
  * @donate https://ko-fi.com/snues
  */
 
@@ -23,16 +24,20 @@ module.exports = class PriorityDM {
     this.UserStore = Stores.UserStore;
     this.PresenceStore = Stores.PresenceStore;
     this.ChannelStore = Stores.ChannelStore;
-    this.NotificationModule = BdApi.Webpack.getByKeys(
-      "showNotification",
-      "requestPermission",
-    );
+    this.wait = new AbortController();
+    BdApi.Webpack.waitForModule(
+      BdApi.Webpack.Filters.byKeys("showNotification", "requestPermission"),
+      { signal: this.wait.signal },
+    ).then((m) => {
+      this.NotificationModule = m;
+    });
     this.Dispatcher = Stores.UserStore._dispatcher;
     this.Dispatcher.subscribe("MESSAGE_CREATE", this.onMessage);
     this.patchContextMenu();
   }
 
   stop() {
+    this.wait?.abort();
     this.Dispatcher.unsubscribe("MESSAGE_CREATE", this.onMessage);
     if (this.unpatchContextMenu) this.unpatchContextMenu();
     this.saveSettings();
@@ -113,6 +118,7 @@ module.exports = class PriorityDM {
   }
 
   notify(message, channel) {
+    if (!this.NotificationModule) return;
     const now = Date.now();
     if (now - this.lastPing < 1000) return;
     this.lastPing = now;
@@ -122,7 +128,6 @@ module.exports = class PriorityDM {
       ? `https://cdn.discordapp.com/avatars/${author.id}/${author.avatar}.png`
       : `https://cdn.discordapp.com/embed/avatars/${(BigInt(author.id) >> 22n) % 6n}.png`;
 
-    if (!this.NotificationModule) return;
     this.NotificationModule.showNotification(
       avatar,
       author.globalName || author.username,
@@ -132,6 +137,7 @@ module.exports = class PriorityDM {
         overrideStreamerMode: this.settings.overrideStreamerMode,
         sound: "message1",
         volume: 0.4,
+        isUserAvatar: true,
       },
     );
   }
