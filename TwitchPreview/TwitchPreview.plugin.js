@@ -4,7 +4,8 @@
  * @authorId 98862725609816064
  * @description Better embeds for Twitch links.
  * @version 3.0.4
- * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/TwitchPreview/TwitchPreview.plugin.js
+ * @invite xp2f3YFKMY
+ * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/TwitchPreview
  * @donate https://ko-fi.com/snues
  */
 
