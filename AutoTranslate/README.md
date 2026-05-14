@@ -6,3 +6,4 @@ This plugin instantly translates messages while you read. Hover the message to r
 
 <br/>
 
+For privacy reasons you should know: this sends most incoming messages to Google, even ones already in your own language.
