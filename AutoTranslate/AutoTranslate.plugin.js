@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Automatically translate messages in chat.
- * @version 0.2.0
+ * @version 0.2.1
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/AutoTranslate
  * @donate https://ko-fi.com/snues
@@ -96,6 +96,25 @@ function cap(map, key, value, limit) {
   while (map.size > limit) map.delete(map.keys().next().value);
 }
 
+function Pills({ options, value, onChange }) {
+  return h(
+    "div",
+    { className: "at-pills" },
+    options.map((o) =>
+      h(
+        "div",
+        {
+          key: o.label,
+          className: "at-pill",
+          onClick: () => onChange(o.value),
+          ...(o.value === value && { "data-on": "" }),
+        },
+        o.label,
+      ),
+    ),
+  );
+}
+
 function Translated({ msg, original, plugin }) {
   const id = msg.id;
   const [, force] = React.useReducer((n) => n + 1, 0);
@@ -134,14 +153,17 @@ module.exports = class AutoTranslate {
       skipLangs: saved?.skipLangs || [],
       invert: saved?.invert || false,
       targetLang: saved?.targetLang || null,
+      dms: saved?.dms ?? false,
+      seen: saved?.seen ?? false,
     };
   }
 
   start() {
     this.LocaleStore = BdApi.Webpack.Stores.LocaleStore;
     this.UserStore = BdApi.Webpack.Stores.UserStore;
+    this.ChannelStore = BdApi.Webpack.Stores.ChannelStore;
     this.active = true;
-    this.targetLang = this.settings.targetLang || osLocale();
+    this.targetLang = this.resolve(this.settings.targetLang);
     this.prepLang();
 
     this.api.DOM.addStyle(`
@@ -153,8 +175,8 @@ module.exports = class AutoTranslate {
         align-items: center;
         gap: 4px;
         padding: 4px 6px 4px 10px;
-        background: var(--brand-500);
-        color: var(--white);
+        background: var(--background-mod-strong);
+        color: var(--text-default);
         border-radius: 3px;
         font-size: 0.875rem;
       }
@@ -168,6 +190,52 @@ module.exports = class AutoTranslate {
       .at-close:hover {
         opacity: 1;
       }
+      .at-panel :is(.bd-setting-note:empty, .bd-setting-divider) { display: none; }
+      .at-card {
+        background: var(--background-mod-muted);
+        border: 1px solid var(--border-muted);
+        border-radius: 6px;
+        padding: 16px;
+        margin-top: 16px;
+      }
+      .at-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .at-body { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .at-add { display: inline-flex; }
+      .at-add .bd-select {
+        display: inline-flex;
+        padding: 3px 10px;
+        background: transparent;
+        border: 1px dashed var(--border-normal);
+        border-radius: 3px;
+        min-width: 0;
+        font-size: 0.875rem;
+        line-height: 20px;
+        color: var(--text-muted);
+        transition: border-color 0.15s ease, color 0.15s ease;
+      }
+      .at-add .bd-select-arrow { display: none; }
+      .at-add .bd-select:hover { color: var(--text-default); border-color: var(--border-strong); }
+      .at-pills {
+        display: inline-flex;
+        background: var(--background-mod-subtle);
+        border-radius: 4px;
+        padding: 2px;
+      }
+      .at-pill {
+        padding: 5px 12px;
+        color: var(--text-muted);
+        border-radius: 3px;
+        cursor: pointer;
+        text-align: center;
+        transition: background 0.2s, color 0.15s ease;
+      }
+      .at-pill[data-on] { background: var(--control-brand-foreground); color: var(--white); }
+      .at-pill:hover:not([data-on]) { color: var(--text-default); }
+      .at-hint { font-style: italic; font-size: 12px; }
     `);
 
     this.wait = new AbortController();
@@ -192,12 +260,14 @@ module.exports = class AutoTranslate {
       }
       this.edited = styles.edited;
       this.modules = { MessageContent, Parser };
-      this.patch();
+      if (this.settings.seen) this.patch();
+      else this.notice();
     });
 
     this.onLocale = () => {
-      if (this.settings.targetLang) return;
-      const loc = osLocale();
+      const cur = this.settings.targetLang;
+      if (cur && cur !== "_discord") return;
+      const loc = this.resolve(cur);
       if (!loc || loc === this.targetLang) return;
       this.targetLang = loc;
       this.reset();
@@ -259,6 +329,7 @@ module.exports = class AutoTranslate {
       if (!r.ok || !this.active || this.targetLang !== target) return;
       const body = await r.json();
       this.langNames = body.tl || body.sl || {};
+      this.refreshPanel?.();
     } catch (e) {
       if (this.active) this.api.Logger.error(e);
     } finally {
@@ -287,6 +358,7 @@ module.exports = class AutoTranslate {
   consider(msg) {
     const id = msg.id;
     const raw = msg.content || "";
+    const channel_id = msg.channel_id;
     const translation = this.cache.get(id);
     if (translation && translation.raw === raw) return;
 
@@ -315,15 +387,17 @@ module.exports = class AutoTranslate {
     }
 
     if (this.skip(msg, stripped)) {
-      cap(this.skipped, id, { raw, stripped }, 1000);
+      cap(this.skipped, id, { raw, stripped, channel_id }, 1000);
       return;
     }
 
     this.pending.add(id);
-    this.enqueue(id, stripped, raw);
+    this.enqueue(id, stripped, raw, channel_id);
   }
 
   skip(msg, stripped) {
+    if (!this.allowed(this.ChannelStore.getChannel(msg.channel_id)))
+      return true;
     const text = msg.content?.trim();
     const cjk = !!text && CJK_RE.test(text);
     return (
@@ -336,8 +410,12 @@ module.exports = class AutoTranslate {
     );
   }
 
-  enqueue(msgId, stripped, raw) {
-    this.queue.push({ msgId, stripped, raw });
+  allowed(c) {
+    return !!c?.isPrivate && (!c.isPrivate() || this.settings.dms);
+  }
+
+  enqueue(msgId, stripped, raw, channel_id) {
+    this.queue.push({ msgId, stripped, raw, channel_id });
     if (this.paused || this.busy || this.drainTimer) return;
     this.drainTimer = setTimeout(() => {
       this.drainTimer = null;
@@ -410,26 +488,31 @@ module.exports = class AutoTranslate {
     }
 
     if (!result) {
-      for (const { msgId, stripped, raw } of batch) {
+      for (const { msgId, stripped, raw, channel_id } of batch) {
         this.pending.delete(msgId);
-        this.retry(msgId, stripped, raw);
+        this.retry(msgId, stripped, raw, channel_id);
       }
       return;
     }
 
     this.backoff = 0;
-    for (const { msgId, stripped, raw } of batch) {
+    for (const { msgId, stripped, raw, channel_id } of batch) {
       const idx = firstIdx.get(raw);
       const r = result.results[idx];
       this.pending.delete(msgId);
 
       if (!r?.text) {
-        this.retry(msgId, stripped, raw);
+        this.retry(msgId, stripped, raw, channel_id);
         continue;
       }
       const text = unmask(r.text, masks[idx].tokens);
       if (this.blocked(r.src) || shouldSkip(raw, text)) {
-        cap(this.skipped, msgId, { raw, stripped, src: r.src }, 1000);
+        cap(
+          this.skipped,
+          msgId,
+          { raw, stripped, src: r.src, channel_id },
+          1000,
+        );
         continue;
       }
 
@@ -437,7 +520,7 @@ module.exports = class AutoTranslate {
       cap(
         this.cache,
         msgId,
-        { text, src: r.src, stripped, raw, parsed: null },
+        { text, src: r.src, stripped, raw, channel_id, parsed: null },
         1000,
       );
       this.setters.get(msgId)?.forEach((f) => f());
@@ -486,16 +569,16 @@ module.exports = class AutoTranslate {
     };
   }
 
-  retry(msgId, stripped, raw) {
+  retry(msgId, stripped, raw, channel_id) {
     const count = (this.retries.get(msgId) || 0) + 1;
     if (count > 2) {
       this.retries.delete(msgId);
-      cap(this.skipped, msgId, { raw, stripped }, 1000);
+      cap(this.skipped, msgId, { raw, stripped, channel_id }, 1000);
       return;
     }
     cap(this.retries, msgId, count, 500);
     this.pending.add(msgId);
-    this.enqueue(msgId, stripped, raw);
+    this.enqueue(msgId, stripped, raw, channel_id);
   }
 
   blocked(src) {
@@ -505,15 +588,21 @@ module.exports = class AutoTranslate {
   }
 
   apply() {
-    for (const [id, { raw, stripped, src }] of [...this.cache]) {
-      if (src && this.blocked(src)) {
+    for (const [id, { raw, stripped, src, channel_id }] of [...this.cache]) {
+      if (
+        !this.allowed(this.ChannelStore.getChannel(channel_id)) ||
+        (src && this.blocked(src))
+      ) {
         this.cache.delete(id);
-        cap(this.skipped, id, { raw, stripped, src }, 1000);
+        cap(this.skipped, id, { raw, stripped, src, channel_id }, 1000);
         this.setters.get(id)?.forEach((f) => f());
       }
     }
     for (const [id, s] of this.skipped) {
-      if (s.src && !this.blocked(s.src)) {
+      if (
+        this.allowed(this.ChannelStore.getChannel(s.channel_id)) &&
+        (!s.src || !this.blocked(s.src))
+      ) {
         this.skipped.delete(id);
         this.setters.get(id)?.forEach((f) => f());
       }
@@ -532,14 +621,58 @@ module.exports = class AutoTranslate {
     this.apply();
   }
 
+  setDms(v) {
+    this.settings.dms = v;
+    this.api.Data.save("settings", this.settings);
+    this.apply();
+  }
+
+  resolve(c) {
+    return c === "_discord"
+      ? this.LocaleStore?.locale?.split("-")[0] || osLocale()
+      : c || osLocale();
+  }
+
   setTargetLang(code) {
     this.settings.targetLang = code || null;
     this.api.Data.save("settings", this.settings);
-    const next = code || osLocale();
+    const next = this.resolve(code || null);
     if (!next || next === this.targetLang) return;
     this.targetLang = next;
     this.reset();
     this.prepLang();
+  }
+
+  notice() {
+    if (!this.active || this.settings.seen) return;
+    BdApi.UI.showConfirmationModal(
+      "AutoTranslate",
+      h(
+        "div",
+        { style: { lineHeight: 1.5 } },
+        h(
+          "p",
+          { style: { marginBottom: 10 } },
+          "For privacy reasons you should know that this plugin sends most incoming messages to Google, even ones already in your language.",
+        ),
+        h(
+          "p",
+          null,
+          h("b", null, "DMs and group DMs are off by default"),
+          " since they're more private. Servers are on. DMs can be enabled in settings.",
+        ),
+      ),
+      {
+        confirmText: "I understand",
+        cancelText: "Disable",
+        onConfirm: () => {
+          this.settings.seen = true;
+          this.api.Data.save("settings", this.settings);
+          if (this.active) this.patch();
+        },
+        onCancel: () => BdApi.Plugins.disable("AutoTranslate"),
+      },
+    );
   }
 
   render(t) {
@@ -579,6 +712,14 @@ module.exports = class AutoTranslate {
       const [list, setList] = React.useState(self.settings.skipLangs);
       const [invert, setInvState] = React.useState(self.settings.invert);
       const [target, setTargetState] = React.useState(self.settings.targetLang);
+      const [dms, setDmsState] = React.useState(self.settings.dms);
+      const [, force] = BdApi.Hooks.useForceUpdate();
+      React.useEffect(() => {
+        self.refreshPanel = force;
+        return () => {
+          self.refreshPanel = null;
+        };
+      }, []);
       const up = (v) => {
         setList(v);
         self.setSkipLangs(v);
@@ -591,7 +732,10 @@ module.exports = class AutoTranslate {
         setTargetState(v || null);
         self.setTargetLang(v || null);
       };
-      const langOf = (c) => self.langNames[c] || c;
+      const toggleDms = (v) => {
+        setDmsState(v);
+        self.setDms(v);
+      };
 
       const osCode = osLocale();
       let osName = "";
@@ -610,7 +754,7 @@ module.exports = class AutoTranslate {
           ? [
               {
                 label: `Discord language (${self.langNames[discordCode] || discordCode})`,
-                value: discordCode,
+                value: "_discord",
               },
             ]
           : [];
@@ -624,88 +768,87 @@ module.exports = class AutoTranslate {
         (o) => o.value !== self.targetLang && !list.includes(o.value),
       );
 
-      const titleRow = {
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        marginBottom: 12,
-      };
-      const titleStyle = {
-        color: "var(--text-default)",
-        fontSize: 14,
-        fontWeight: 600,
-      };
-
-      return h(
+      const card = h(
         "div",
-        { style: { padding: "20px 10px 10px" } },
+        { className: "at-card" },
         h(
           "div",
-          { style: titleRow },
-          h("span", { style: titleStyle }, "Translate Into"),
-          h(
-            "div",
-            { style: { flex: 1 } },
-            h(BdApi.Components.DropdownInput, {
-              value: target || "",
-              options: [
-                { label: sysLabel, value: "" },
-                ...discordOption,
-                ...tlOptions,
-              ],
-              onChange: (v) => pick(v),
-            }),
-          ),
+          { className: "at-head" },
+          h("span", { className: "bd-setting-title" }, "Translation filter"),
+          h(Pills, {
+            options: [
+              { label: "Skip", value: false },
+              { label: "Only", value: true },
+            ],
+            value: invert,
+            onChange: flip,
+          }),
         ),
         h(
           "div",
-          { style: { ...titleRow, marginBottom: 8 } },
-          h(
-            "span",
-            { style: titleStyle },
-            invert ? "Only Translate" : "Do Not Translate",
-          ),
-          h(
-            "div",
-            { style: { flex: 1 } },
-            h(BdApi.Components.DropdownInput, {
-              value: "",
-              options: [{ label: "Add language...", value: "" }, ...addOptions],
-              onChange: (v) => {
-                if (v) up([...list, v]);
-              },
-            }),
-          ),
-        ),
-        h(
-          "div",
-          { style: { ...titleRow, marginBottom: 8 } },
-          h(
-            "span",
-            { style: { color: "var(--text-default)" } },
-            "Only translate selected languages",
-          ),
-          h(BdApi.Components.SwitchInput, { value: invert, onChange: flip }),
-        ),
-        h(
-          "div",
-          { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+          { className: "at-body" },
           list.map((code) =>
             h(
               "span",
               { key: code, className: "at-tag" },
-              langOf(code),
+              self.langNames[code] || code,
               h(
                 "span",
                 {
                   className: "at-close",
                   onClick: () => up(list.filter((c) => c !== code)),
                 },
-                "\u00D7",
+                "×",
               ),
             ),
           ),
+          h(
+            "div",
+            { className: "at-add" },
+            h(BdApi.Components.DropdownInput, {
+              key: list.length,
+              value: "_add",
+              options: [
+                { label: "+ Add language", value: "_add" },
+                ...addOptions,
+              ],
+              onChange: (v) => {
+                if (v && v !== "_add") up([...list, v]);
+              },
+            }),
+          ),
         ),
+        h(
+          "div",
+          { className: "bd-setting-note at-hint" },
+          invert
+            ? "Only messages in these languages will be translated"
+            : "Messages in these languages won't be translated",
+        ),
+      );
+
+      return h(
+        "div",
+        { className: "at-panel" },
+        h(
+          BdApi.Components.SettingItem,
+          { name: "Target language", inline: true },
+          h(BdApi.Components.DropdownInput, {
+            value: target || "",
+            options: [
+              { label: sysLabel, value: "" },
+              ...discordOption,
+              ...tlOptions,
+            ],
+            onChange: pick,
+          }),
+        ),
+        h(
+          BdApi.Components.SettingItem,
+          { name: "Translate direct messages", inline: true },
+          h(BdApi.Components.SwitchInput, { value: dms, onChange: toggleDms }),
+        ),
+        card,
       );
     }
     return h(Panel);
