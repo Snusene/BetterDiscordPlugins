@@ -1,6 +1,6 @@
-<a href="https://betterdiscord.app"><img src="https://github.com/user-attachments/assets/d21279c5-cef0-4469-8405-c31664edc948" height="120" align="right"></a>
+<a href="https://betterdiscord.app/developers/Snues"><img src="https://github.com/user-attachments/assets/d21279c5-cef0-4469-8405-c31664edc948" height="120" align="right"></a>
 
-**Plugins for [BetterDiscord](https://betterdiscord.app) I built, use and share because Discord was missing it.**
+**Plugins for [BetterDiscord](https://betterdiscord.app/developers/Snues) I built, use and share because Discord was missing it.**
 
 <br>
 
