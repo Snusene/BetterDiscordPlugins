@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Automatically translate messages in chat.
- * @version 0.2.1
+ * @version 0.3.0
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/AutoTranslate
  * @donate https://ko-fi.com/snues
@@ -16,32 +16,34 @@ const TYPES = new Set([0, 19, 20, 21, 23]);
 
 const ASCII_RE = /^[\x20-\x7E]+$/;
 const SKIP_RE =
-  /^(wdym|wym|wyd|wyll|wyp|omw|otw|omfg|uwu|owo|idgaf|dgaf|idek|ime|istg|iykyk|hmu|ama|til|kys|sus|soz|urw|ynk|zoomer|gigachad|nepo|eta|vid|hru|ezpz|lmaoo|lmaooo|sussy|sumthn|ggez|lulw|imk|iono|icymi|og|smol|ngmi|copium|hopium|mald|wojak|omegalul|monkaw|kekw|rekt|fanum|wonk|bussin|sadge|baes|imba|defo|presh|yote|yike|finna|wat|probly|okies|okayy|ahaha|yaas|mwah|kbai|kbye|wildin|simpin|grindin|daammn|ymd|brainrot)[!?.,]*$/i;
+  /^(wdym|wym|wyd|wyll|wyp|omw|otw|omfg|uwu|owo|idgaf|dgaf|idek|ime|istg|iykyk|hmu|ama|til|kys|sus|soz|urw|ynk|zoomer|gigachad|nepo|eta|vid|hru|ezpz|lmaoo|lmaooo|sussy|sumthn|ggez|lulw|imk|iono|icymi|og|smol|ngmi|copium|hopium|mald|wojak|omegalul|monkaw|kekw|rekt|fanum|wonk|bussin|sadge|baes|imba|defo|presh|yote|yike|finna|wat|probly|okies|okayy|ahaha|yaas|mwah|kbai|kbye|wildin|simpin|grindin|daammn|ymd|brainrot|lol|lmao|rofl|smh|ngl|tbh|btw|fyi|pog|bruh)[!?.,]*$/i;
 const CONS_RE = /^[bcdfghjklmnpqrstvwxz]{2,6}[!?.,]*$/i;
 const HASH_RE = /^[A-Fa-f0-9]{12,}$/;
-const RULE_RE = /^[\s\-=*_~`>|[\]x()]+$/;
+const RULE_RE = /^[\s\-=*_~`>|[\]()]+$/;
 const DICE_RE = /^\d+d\d+(\s*[,+\-=].*)?$/i;
 const CJK_RE =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}]/u;
 
 const NOISE_RE =
-  /https?:\/\/\S+|```[\s\S]*?```|`[^`]+`|\|\||<a?:[a-zA-Z0-9_]+:\d+>|<@!?&?\d+>|<#\d+>|<t:-?\d+(?::[tTdDfFR])?>|<\/[^\s>][^>]*:\d+>/gi;
+  /[ \t]{2,}|https?:\/\/\S+|[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+|\b\d{1,3}(?:\.\d{1,3}){3}\b|\+\d[\d\s().-]{6,}\d|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\/\S*|```[\s\S]*?```|`[^`]+`|\|\||<a?:[a-zA-Z0-9_]+:\d+>|<@!?&?\d+>|<#\d+>|<t:-?\d+(?::[tTdDfFR])?>|<\/[^\s>][^>]*:\d+>|<[^>\n]*>|</gi;
 
-const MARK = String.fromCharCode(0xe000);
-const MARK_RE = new RegExp(MARK + "(\\d+)" + MARK, "g");
+const MARK = "ZZZATMK";
+const MARK_RE = /ZZZATMK(\d+)ZZZATMK/g;
 
-function mask(text) {
+function mask(text, offset = 0) {
   const tokens = [];
   return {
-    masked: text.replace(NOISE_RE, (m) => MARK + (tokens.push(m) - 1) + MARK),
+    masked: text.replace(
+      NOISE_RE,
+      (m) => MARK + (tokens.push(m) - 1 + offset) + MARK,
+    ),
     tokens,
+    offset,
   };
 }
 
-function unmask(text, tokens) {
-  return text.replace(MARK_RE, (full, i) =>
-    +i < tokens.length ? tokens[+i] : full,
-  );
+function unmask(text, tokens, offset = 0) {
+  return text.replace(MARK_RE, (_, i) => tokens[+i - offset] ?? "");
 }
 
 function junk(text) {
@@ -87,7 +89,15 @@ function shouldSkip(raw, translated) {
 }
 
 function osLocale() {
-  return (navigator.language || "en").split("-")[0];
+  return navigator.language.split("-")[0];
+}
+
+function langName(code) {
+  try {
+    return new Intl.DisplayNames([code], { type: "language" }).of(code) || code;
+  } catch {
+    return code;
+  }
 }
 
 function cap(map, key, value, limit) {
@@ -95,6 +105,12 @@ function cap(map, key, value, limit) {
   map.set(key, value);
   while (map.size > limit) map.delete(map.keys().next().value);
 }
+
+const unwanted = (msg, myId) =>
+  !TYPES.has(msg.type ?? 0) ||
+  msg.author?.id === myId ||
+  msg.author?.bot ||
+  !!(msg.webhookId && !msg.applicationId);
 
 function Pills({ options, value, onChange }) {
   return h(
@@ -115,61 +131,36 @@ function Pills({ options, value, onChange }) {
   );
 }
 
-function Translated({ msg, original, plugin }) {
+function Translated({ msg, original, extras, plugin }) {
   const id = msg.id;
-  const [, force] = React.useReducer((n) => n + 1, 0);
+  const ref = React.useRef(null);
+  const subscribe = React.useCallback((cb) => plugin.sub(id, cb), [id]);
+  React.useSyncExternalStore(subscribe, () => plugin.subs.get(id)?.v ?? 0);
   React.useEffect(() => {
-    let set = plugin.setters.get(id);
-    if (!set) plugin.setters.set(id, (set = new Set()));
-    set.add(force);
-    return () => {
-      set.delete(force);
-      if (!set.size) plugin.setters.delete(id);
-    };
-  }, [id]);
-  React.useEffect(() => {
-    if (plugin.consider(msg)) force();
+    const node = ref.current?.closest('[id^="chat-messages-"]');
+    if (!node) return;
+    plugin.watch(node, msg);
+    return () => plugin.unwatch(node);
   }, [msg]);
   const t = plugin.cache.get(id);
-  if (t && t.raw === (msg.content || "")) return plugin.render(t);
-  return original;
+  const ready = t && t.raw === (msg.content || "");
+  const content = ready ? plugin.render(t, extras) : [original, ...extras];
+  return h("span", { ref, style: { display: "contents" } }, content);
 }
 
-module.exports = class AutoTranslate {
-  constructor(meta) {
-    this.api = new BdApi(meta.name);
-    this.cache = new Map();
-    this.retries = new Map();
-    this.queue = [];
-    this.pending = new Set();
-    this.skipped = new Map();
-    this.controllers = new Set();
-    this.setters = new Map();
-    this.active = this.paused = this.busy = false;
-    this.backoff = 0;
-    this.langNames = {};
-    const saved = this.api.Data.load("settings");
-    this.settings = {
-      skipLangs: saved?.skipLangs || [],
-      invert: saved?.invert || false,
-      targetLang: saved?.targetLang || null,
-      dms: saved?.dms ?? false,
-      seen: saved?.seen ?? false,
-    };
-  }
-
-  start() {
-    this.LocaleStore = BdApi.Webpack.Stores.LocaleStore;
-    this.UserStore = BdApi.Webpack.Stores.UserStore;
-    this.ChannelStore = BdApi.Webpack.Stores.ChannelStore;
-    this.active = true;
-    this.targetLang = this.resolve(this.settings.targetLang);
-    this.prepLang();
-
-    this.api.DOM.addStyle(`
-      .at-orig { display: none; }
-      [id^="chat-messages-"]:hover .at-orig { display: inline; }
-      [id^="chat-messages-"]:hover .at-trans { display: none; }
+const CSS = `
+      .at-outer {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .at-trans,
+      .at-orig {
+        grid-area: 1 / 1;
+        min-width: 0;
+      }
+      .at-orig { visibility: hidden; }
+      [id^="chat-messages-"]:hover .at-orig { visibility: visible; }
+      [id^="chat-messages-"]:hover .at-trans { visibility: hidden; }
       .at-tag {
         display: inline-flex;
         align-items: center;
@@ -179,6 +170,7 @@ module.exports = class AutoTranslate {
         color: var(--text-default);
         border-radius: 3px;
         font-size: 0.875rem;
+        line-height: 20px;
       }
       .at-close {
         cursor: pointer;
@@ -194,7 +186,7 @@ module.exports = class AutoTranslate {
       .at-card {
         background: var(--background-mod-muted);
         border: 1px solid var(--border-muted);
-        border-radius: 6px;
+        border-radius: 8px;
         padding: 16px;
         margin-top: 16px;
       }
@@ -203,22 +195,23 @@ module.exports = class AutoTranslate {
         justify-content: space-between;
         align-items: center;
       }
+      .at-label { display: flex; align-items: center; gap: 8px; }
       .at-body { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
       .at-add { display: inline-flex; }
       .at-add .bd-select {
         display: inline-flex;
-        padding: 3px 10px;
-        background: transparent;
-        border: 1px dashed var(--border-normal);
+        padding: 4px 10px;
+        background: var(--background-mod-subtle);
+        border: none;
         border-radius: 3px;
         min-width: 0;
         font-size: 0.875rem;
         line-height: 20px;
         color: var(--text-muted);
-        transition: border-color 0.15s ease, color 0.15s ease;
+        transition: background 0.15s ease, color 0.15s ease;
       }
       .at-add .bd-select-arrow { display: none; }
-      .at-add .bd-select:hover { color: var(--text-default); border-color: var(--border-strong); }
+      .at-add .bd-select:hover { background: var(--background-mod-strong); color: var(--text-default); }
       .at-pills {
         display: inline-flex;
         background: var(--background-mod-subtle);
@@ -233,10 +226,118 @@ module.exports = class AutoTranslate {
         text-align: center;
         transition: background 0.2s, color 0.15s ease;
       }
-      .at-pill[data-on] { background: var(--control-brand-foreground); color: var(--white); }
+      .at-pill[data-on] { background: var(--bd-brand); color: var(--white); }
       .at-pill:hover:not([data-on]) { color: var(--text-default); }
-      .at-hint { font-style: italic; font-size: 12px; }
-    `);
+      .at-title {
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .at-hint { font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+      .at-adv {
+        margin-top: 16px;
+        border: 1px solid var(--border-muted);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .at-adv-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px;
+        background: var(--background-mod-subtle);
+        cursor: pointer;
+        user-select: none;
+      }
+      .at-adv-head:hover { filter: brightness(0.9); }
+      .at-adv-title {
+        color: var(--text-strong);
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .at-adv-body { padding: 12px; background: var(--background-mod-muted); }
+      .at-arrow {
+        color: var(--text-muted);
+        transition: transform 0.2s;
+      }
+      .at-arrow.at-open { transform: rotate(90deg); }
+      .at-srv-list {
+        max-height: clamp(140px, 60vh - 430px, 280px);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--scrollbar-auto-thumb) transparent;
+      }
+      .at-srv {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px;
+        border-radius: 4px;
+      }
+      .at-srv:hover { background: var(--interactive-background-hover); }
+      .at-srv-icon { flex-shrink: 0; }
+      .at-srv-name {
+        flex: 1;
+        color: var(--text-default);
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    `;
+
+module.exports = class AutoTranslate {
+  constructor(meta) {
+    this.api = new BdApi(meta.name);
+    this.cache = new Map();
+    this.retries = new Map();
+    this.queue = [];
+    this.pending = new Set();
+    this.skipped = new Map();
+    this.controllers = new Set();
+    this.subs = new Map();
+    this.active = this.paused = this.busy = false;
+    this.backoff = 0;
+    this.label = null;
+    this.langNames = {};
+    const saved = this.api.Data.load("settings");
+    this.settings = {
+      skipLangs: saved?.skipLangs || [],
+      invert: saved?.invert || false,
+      targetLang: saved?.targetLang || null,
+      dms: saved?.dms ?? false,
+      disabledGuilds: saved?.disabledGuilds || [],
+      seen: saved?.seen ?? false,
+    };
+  }
+
+  start() {
+    this.LocaleStore = BdApi.Webpack.Stores.LocaleStore;
+    this.UserStore = BdApi.Webpack.Stores.UserStore;
+    this.ChannelStore = BdApi.Webpack.Stores.ChannelStore;
+    this.GuildStore = BdApi.Webpack.Stores.GuildStore;
+    this.SortedGuildStore = BdApi.Webpack.Stores.SortedGuildStore;
+    this.MessageStore = BdApi.Webpack.Stores.MessageStore;
+    this.SelectedChannelStore = BdApi.Webpack.Stores.SelectedChannelStore;
+    this.myId = this.UserStore.getCurrentUser()?.id;
+    this.active = true;
+    this.visible = new Set();
+    this.observed = new WeakMap();
+    this.observer = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const msg = this.observed.get(e.target);
+        if (!msg) continue;
+        if (e.isIntersecting) {
+          this.visible.add(msg.id);
+          if (this.consider(msg)) this.notify(msg.id);
+        } else this.visible.delete(msg.id);
+      }
+    });
+    this.targetLang = this.resolve(this.settings.targetLang);
+    this.prepLang();
+
+    this.api.DOM.addStyle(CSS);
 
     this.wait = new AbortController();
     BdApi.Webpack.waitForModule(
@@ -259,6 +360,14 @@ module.exports = class AutoTranslate {
         return;
       }
       this.edited = styles.edited;
+      this.GuildIcon = W.getModule(
+        (m) => {
+          if (typeof m !== "function") return false;
+          const s = m.toString();
+          return s.includes("getGuildIconURL") && s.includes("acronym");
+        },
+        { searchExports: true },
+      );
       this.modules = { MessageContent, Parser };
       if (this.settings.seen) this.patch();
       else this.notice();
@@ -272,6 +381,7 @@ module.exports = class AutoTranslate {
       this.targetLang = loc;
       this.reset();
       this.prepLang();
+      this.refresh();
     };
     this.LocaleStore.addChangeListener(this.onLocale);
   }
@@ -281,19 +391,20 @@ module.exports = class AutoTranslate {
     this.wait?.abort();
     for (const c of this.controllers) c.abort();
     this.controllers.clear();
+    this.observer?.disconnect();
+    this.observer = null;
+    this.observed = null;
+    this.visible = null;
     this.LocaleStore?.removeChangeListener(this.onLocale);
     clearTimeout(this.pauseTimer);
     clearTimeout(this.drainTimer);
     this.pauseTimer = this.drainTimer = null;
-    this.paused = false;
+    this.paused = this.busy = false;
     this.api.Patcher.unpatchAll();
     this.api.DOM.removeStyle();
     this.reset();
-    this.setters.clear();
-    this.modules = null;
-    this.parser = null;
-    this.edited = null;
-    this.langNames = {};
+    this.subs.clear();
+    this.refreshPanel = null;
   }
 
   reset() {
@@ -303,38 +414,8 @@ module.exports = class AutoTranslate {
     this.backoff = 0;
     this.pending.clear();
     this.skipped.clear();
-  }
-
-  async prepLang() {
-    const target = this.targetLang;
-    this.label = "translated";
-
-    this.translate(["translated"], target)
-      .then((r) => {
-        if (!this.active || this.targetLang !== target) return;
-        const t = r?.results?.[0]?.text;
-        if (t) this.label = t.toLowerCase();
-      })
-      .catch((e) => {
-        if (this.active) this.api.Logger.error(e);
-      });
-
-    const ctrl = new AbortController();
-    this.controllers.add(ctrl);
-    try {
-      const r = await BdApi.Net.fetch(
-        `https://translate.googleapis.com/translate_a/l?client=gtx&hl=${target}`,
-        { timeout: 10000, signal: ctrl.signal },
-      );
-      if (!r.ok || !this.active || this.targetLang !== target) return;
-      const body = await r.json();
-      this.langNames = body.tl || body.sl || {};
-      this.refreshPanel?.();
-    } catch (e) {
-      if (this.active) this.api.Logger.error(e);
-    } finally {
-      this.controllers.delete(ctrl);
-    }
+    this.label = null;
+    this.langNames = {};
   }
 
   patch() {
@@ -346,16 +427,27 @@ module.exports = class AutoTranslate {
       if (!msg?.id) return;
       if (props.className?.includes("repliedTextContent")) return;
       if (!Array.isArray(ret?.props?.children)) return;
+      if (unwanted(msg, this.myId)) return;
       const orig = ret.props.children[0];
-      ret.props.children[0] = h(
-        BdApi.Components.ErrorBoundary,
-        { name: "AutoTranslate", fallback: orig },
-        h(Translated, { key: "at-content", msg, original: orig, plugin: this }),
-      );
+      const extras = ret.props.children.slice(1);
+      ret.props.children = [
+        h(
+          BdApi.Components.ErrorBoundary,
+          { name: "AutoTranslate", fallback: orig },
+          h(Translated, {
+            key: "at-content",
+            msg,
+            original: orig,
+            extras,
+            plugin: this,
+          }),
+        ),
+      ];
     });
   }
 
   consider(msg) {
+    if (!this.visible?.has(msg.id)) return;
     const id = msg.id;
     const raw = msg.content || "";
     const channel_id = msg.channel_id;
@@ -395,23 +487,100 @@ module.exports = class AutoTranslate {
     this.enqueue(id, stripped, raw, channel_id);
   }
 
+  watch(node, msg) {
+    if (!this.observer) return;
+    this.observed.set(node, msg);
+    this.observer.observe(node);
+  }
+
+  unwatch(node) {
+    if (!this.observer) return;
+    const msg = this.observed.get(node);
+    if (msg) this.visible.delete(msg.id);
+    this.observed.delete(node);
+    this.observer.unobserve(node);
+  }
+
+  sub(id, cb) {
+    let s = this.subs.get(id);
+    if (!s) this.subs.set(id, (s = { v: 0, cbs: new Set() }));
+    s.cbs.add(cb);
+    return () => {
+      s.cbs.delete(cb);
+      if (!s.cbs.size) this.subs.delete(id);
+    };
+  }
+
+  notify(id) {
+    const s = this.subs.get(id);
+    if (!s) return;
+    s.v++;
+    s.cbs.forEach((cb) => cb());
+  }
+
   skip(msg, stripped) {
     if (!this.allowed(this.ChannelStore.getChannel(msg.channel_id)))
       return true;
     const text = msg.content?.trim();
     const cjk = !!text && CJK_RE.test(text);
     return (
-      !TYPES.has(msg.type ?? 0) ||
-      msg.author?.id === this.UserStore.getCurrentUser()?.id ||
-      msg.author?.bot ||
-      (msg.webhookId && !msg.applicationId) ||
       (!cjk && (!text || text.length < 2 || stripped.length < 2)) ||
       junk(stripped)
     );
   }
 
   allowed(c) {
-    return !!c?.isPrivate && (!c.isPrivate() || this.settings.dms);
+    if (!c?.isPrivate) return false;
+    if (c.isPrivate()) return this.settings.dms;
+    return !this.settings.disabledGuilds.includes(c.guild_id);
+  }
+
+  render(t, extras = []) {
+    if (!t.parsed) {
+      t.parsed = {
+        text: this.parser.parse(t.text),
+        raw: this.parser.parse(t.raw),
+        srcLabel: (this.langNames[t.src] || t.src)
+          .toLowerCase()
+          .replace(/[()]/g, ""),
+      };
+    }
+    const p = t.parsed;
+    const tag = (txt) =>
+      h(
+        "span",
+        {
+          className: this.edited,
+          style: { color: "var(--chat-text-muted)" },
+        },
+        " (",
+        txt,
+        ")",
+      );
+    const clone = (pfx) =>
+      extras.map((el, i) =>
+        el?.props
+          ? React.cloneElement(el, { key: `at-${pfx}-${el.key || i}` })
+          : el,
+      );
+    return h(
+      "span",
+      { className: "at-outer" },
+      h(
+        "span",
+        { className: "at-trans" },
+        p.text,
+        tag(this.label || "translated"),
+        ...clone("t"),
+      ),
+      h(
+        "span",
+        { className: "at-orig" },
+        p.raw,
+        tag(p.srcLabel),
+        ...clone("o"),
+      ),
+    );
   }
 
   enqueue(msgId, stripped, raw, channel_id) {
@@ -447,6 +616,20 @@ module.exports = class AutoTranslate {
     if (!this.active) return;
     const target = this.targetLang;
 
+    batch = batch.filter((item) => {
+      if (this.allowed(this.ChannelStore.getChannel(item.channel_id)))
+        return true;
+      this.pending.delete(item.msgId);
+      cap(
+        this.skipped,
+        item.msgId,
+        { raw: item.raw, stripped: item.stripped, channel_id: item.channel_id },
+        1000,
+      );
+      return false;
+    });
+    if (!batch.length) return;
+
     const firstIdx = new Map();
     const unique = [];
     for (const item of batch) {
@@ -455,34 +638,20 @@ module.exports = class AutoTranslate {
       unique.push(item);
     }
 
-    const masks = unique.map((b) => mask(b.raw));
+    let offset = 0;
+    const masks = unique.map((b) => {
+      const r = mask(b.raw, offset);
+      offset += r.tokens.length;
+      return r;
+    });
     const result = await this.translate(
       masks.map((x) => x.masked),
       target,
-    ).catch((e) => {
-      if (this.active) this.api.Logger.error(e);
-      return null;
-    });
+    );
     if (!this.active || target !== this.targetLang) return;
 
     if (result?.rateLimited) {
-      this.paused = true;
-      const ra = Number(result.retryAfter);
-      const base =
-        Number.isFinite(ra) && ra > 0
-          ? Math.min(ra, 120)
-          : Math.min((this.backoff || 2.5) * 2, 60);
-      this.backoff = base;
-      const wait = (base + Math.random()) * 1000;
-      BdApi.UI.showToast(
-        `AutoTranslate: paused, retrying in ${Math.round(wait / 1000)}s`,
-        { type: "warning" },
-      );
-      this.pauseTimer = setTimeout(() => {
-        this.paused = false;
-        this.pauseTimer = null;
-        if (this.queue.length) this.drain();
-      }, wait);
+      this.tripPause(Number(result.retryAfter));
       this.queue.unshift(...batch);
       return;
     }
@@ -496,6 +665,7 @@ module.exports = class AutoTranslate {
     }
 
     this.backoff = 0;
+    this.prepLang();
     for (const { msgId, stripped, raw, channel_id } of batch) {
       const idx = firstIdx.get(raw);
       const r = result.results[idx];
@@ -505,7 +675,7 @@ module.exports = class AutoTranslate {
         this.retry(msgId, stripped, raw, channel_id);
         continue;
       }
-      const text = unmask(r.text, masks[idx].tokens);
+      const text = unmask(r.text, masks[idx].tokens, masks[idx].offset);
       if (this.blocked(r.src) || shouldSkip(raw, text)) {
         cap(
           this.skipped,
@@ -523,11 +693,94 @@ module.exports = class AutoTranslate {
         { text, src: r.src, stripped, raw, channel_id, parsed: null },
         1000,
       );
-      this.setters.get(msgId)?.forEach((f) => f());
+      this.notify(msgId);
     }
   }
 
   async translate(texts, target) {
+    if (!this.active) return null;
+    let a, err;
+    try {
+      a = await this.translatePa(texts, target);
+    } catch (e) {
+      err = e;
+    }
+    if (a?.results) return a;
+    let b;
+    try {
+      b = await this.translateGtx(texts, target);
+    } catch (e) {
+      err ??= e;
+    }
+    if (b?.results) return b;
+    if (a?.rateLimited || b?.rateLimited)
+      return { rateLimited: true, retryAfter: a?.retryAfter ?? b?.retryAfter };
+    if (err && this.active) this.api.Logger.error(err);
+    return null;
+  }
+
+  async req(url, opts) {
+    const ctrl = new AbortController();
+    this.controllers.add(ctrl);
+    try {
+      return await BdApi.Net.fetch(url, {
+        timeout: 10000,
+        signal: ctrl.signal,
+        ...opts,
+      });
+    } finally {
+      this.controllers.delete(ctrl);
+    }
+  }
+
+  rateLimit(resp) {
+    if (resp.status !== 429 && resp.status !== 503) return null;
+    const ra = resp.headers.get("retry-after");
+    return { rateLimited: true, retryAfter: ra ? parseInt(ra, 10) : null };
+  }
+
+  async translatePa(texts, target) {
+    const html = texts.map((t) =>
+      t
+        .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+        .replace(/__([^_\n]+)__/g, "<u>$1</u>")
+        .replace(/~~([^~\n]+)~~/g, "<s>$1</s>")
+        .replace(/\n/g, "<br>"),
+    );
+    const resp = await this.req(
+      "https://translate-pa.googleapis.com/v1/translateHtml",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json+protobuf",
+          "X-Goog-API-Key": "AIzaSyATBXajvzQLTDHEQbcpq0Ihe0vWDHmO520",
+        },
+        body: JSON.stringify([[html, "auto", target], "te_lib"]),
+      },
+    );
+    const limited = this.rateLimit(resp);
+    if (limited) return limited;
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const trans = data?.[0];
+    const srcs = data?.[1];
+    if (!Array.isArray(trans) || trans.length !== texts.length) return null;
+    const decoder = document.createElement("textarea");
+    return {
+      results: trans.map((t, i) => {
+        decoder.innerHTML = t;
+        const text = decoder.value
+          .replace(/<br\s*\/?> ?/gi, "\n")
+          .replace(/<b>([\s\S]*?)<\/b>/g, "**$1**")
+          .replace(/<u>([\s\S]*?)<\/u>/g, "__$1__")
+          .replace(/<s>([\s\S]*?)<\/s>/g, "~~$1~~")
+          .replace(/^>$/gm, "> ");
+        return { text, src: srcs?.[i] || "auto" };
+      }),
+    };
+  }
+
+  async translateGtx(texts, target) {
     const query = new URLSearchParams({
       client: "gtx",
       dt: "t",
@@ -538,27 +791,16 @@ module.exports = class AutoTranslate {
     });
     const body = new URLSearchParams();
     for (const t of texts) body.append("q", t);
-    const ctrl = new AbortController();
-    this.controllers.add(ctrl);
-    let resp;
-    try {
-      resp = await BdApi.Net.fetch(
-        `https://translate.googleapis.com/translate_a/t?${query}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: body.toString(),
-          timeout: 10000,
-          signal: ctrl.signal,
-        },
-      );
-    } finally {
-      this.controllers.delete(ctrl);
-    }
-    if (resp.status === 429 || resp.status === 503) {
-      const ra = resp.headers.get("retry-after");
-      return { rateLimited: true, retryAfter: ra ? parseInt(ra, 10) : null };
-    }
+    const resp = await this.req(
+      `https://translate.googleapis.com/translate_a/t?${query}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      },
+    );
+    const limited = this.rateLimit(resp);
+    if (limited) return limited;
     if (!resp.ok) return null;
     const data = await resp.json();
     if (!Array.isArray(data) || data.length !== texts.length) return null;
@@ -581,6 +823,58 @@ module.exports = class AutoTranslate {
     this.enqueue(msgId, stripped, raw, channel_id);
   }
 
+  async prepLang() {
+    const target = this.targetLang;
+    const labelNeeded = !this.label;
+    const langsNeeded = !Object.keys(this.langNames).length;
+    if (!labelNeeded && !langsNeeded) return;
+
+    if (labelNeeded) {
+      this.translate(["translated"], target)
+        .then((r) => {
+          if (!this.active || this.targetLang !== target) return;
+          if (r?.rateLimited) return this.tripPause(r.retryAfter);
+          const t = r?.results?.[0]?.text;
+          if (t) this.label = t.toLowerCase();
+        })
+        .catch((e) => {
+          if (this.active) this.api.Logger.error(e);
+        });
+    }
+
+    if (!langsNeeded) return;
+    try {
+      const r = await this.req(
+        `https://translate.googleapis.com/translate_a/l?client=gtx&hl=${encodeURIComponent(target)}`,
+      );
+      if (!this.active || this.targetLang !== target) return;
+      const limited = this.rateLimit(r);
+      if (limited) return this.tripPause(limited.retryAfter);
+      if (!r.ok) return;
+      const body = await r.json();
+      this.langNames = body.tl || body.sl || {};
+      this.refreshPanel?.();
+    } catch (e) {
+      if (this.active) this.api.Logger.error(e);
+    }
+  }
+
+  tripPause(retryAfter) {
+    if (this.paused) return;
+    this.paused = true;
+    const base =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter, 120)
+        : Math.min((this.backoff || 2.5) * 2, 60);
+    this.backoff = base;
+    const wait = (base + Math.random()) * 1000;
+    this.pauseTimer = setTimeout(() => {
+      this.paused = false;
+      this.pauseTimer = null;
+      if (this.queue.length) this.drain();
+    }, wait);
+  }
+
   blocked(src) {
     const { skipLangs, invert } = this.settings;
     if (!skipLangs.length) return false;
@@ -595,52 +889,59 @@ module.exports = class AutoTranslate {
       ) {
         this.cache.delete(id);
         cap(this.skipped, id, { raw, stripped, src, channel_id }, 1000);
-        this.setters.get(id)?.forEach((f) => f());
       }
     }
-    for (const [id, s] of this.skipped) {
+    for (const [id, s] of [...this.skipped]) {
       if (
         this.allowed(this.ChannelStore.getChannel(s.channel_id)) &&
         (!s.src || !this.blocked(s.src))
       ) {
         this.skipped.delete(id);
-        this.setters.get(id)?.forEach((f) => f());
       }
     }
   }
 
+  refresh() {
+    const cid = this.SelectedChannelStore.getChannelId();
+    if (!cid) return;
+    for (const id of [...this.subs.keys()]) {
+      const m = this.MessageStore.getMessage(cid, id);
+      if (m) this.consider(m);
+      this.notify(id);
+    }
+  }
+
+  mutate(patch, after) {
+    Object.assign(this.settings, patch);
+    this.api.Data.save("settings", this.settings);
+    after?.call(this);
+  }
+
   setSkipLangs(list) {
-    this.settings.skipLangs = list;
-    this.api.Data.save("settings", this.settings);
-    this.apply();
+    this.mutate({ skipLangs: list }, this.apply);
   }
-
-  setInvert(value) {
-    this.settings.invert = value;
-    this.api.Data.save("settings", this.settings);
-    this.apply();
+  setInvert(v) {
+    this.mutate({ invert: v }, this.apply);
   }
-
   setDms(v) {
-    this.settings.dms = v;
-    this.api.Data.save("settings", this.settings);
-    this.apply();
+    this.mutate({ dms: v }, this.apply);
   }
-
-  resolve(c) {
-    return c === "_discord"
-      ? this.LocaleStore?.locale?.split("-")[0] || osLocale()
-      : c || osLocale();
+  setDisabledGuilds(list) {
+    this.mutate({ disabledGuilds: list }, this.apply);
   }
 
   setTargetLang(code) {
-    this.settings.targetLang = code || null;
-    this.api.Data.save("settings", this.settings);
+    this.mutate({ targetLang: code || null });
     const next = this.resolve(code || null);
     if (!next || next === this.targetLang) return;
     this.targetLang = next;
     this.reset();
     this.prepLang();
+  }
+
+  resolve(c) {
+    if (c === "_system") return osLocale();
+    return c && c !== "_discord" ? c : this.LocaleStore.locale.split("-")[0];
   }
 
   notice() {
@@ -666,43 +967,11 @@ module.exports = class AutoTranslate {
         confirmText: "I understand",
         cancelText: "Disable",
         onConfirm: () => {
-          this.settings.seen = true;
-          this.api.Data.save("settings", this.settings);
+          this.mutate({ seen: true });
           if (this.active) this.patch();
         },
         onCancel: () => BdApi.Plugins.disable("AutoTranslate"),
       },
-    );
-  }
-
-  render(t) {
-    if (!t.parsed) {
-      t.parsed = {
-        text: this.parser.parse(t.text),
-        raw: this.parser.parse(t.raw),
-        srcLabel: (this.langNames[t.src] || t.src)
-          .toLowerCase()
-          .replace(/[()]/g, ""),
-      };
-    }
-    const p = t.parsed;
-    return h(
-      "span",
-      null,
-      h("span", { className: "at-trans" }, p.text),
-      h("span", { className: "at-orig" }, p.raw),
-      " ",
-      h(
-        "span",
-        {
-          className: this.edited,
-          style: { color: "var(--chat-text-muted)" },
-        },
-        "(",
-        h("span", { className: "at-trans" }, this.label),
-        h("span", { className: "at-orig" }, p.srcLabel),
-        ")",
-      ),
     );
   }
 
@@ -713,11 +982,14 @@ module.exports = class AutoTranslate {
       const [invert, setInvState] = React.useState(self.settings.invert);
       const [target, setTargetState] = React.useState(self.settings.targetLang);
       const [dms, setDmsState] = React.useState(self.settings.dms);
+      const [off, setOff] = React.useState(self.settings.disabledGuilds);
+      const [serversOpen, setServersOpen] = React.useState(false);
       const [, force] = BdApi.Hooks.useForceUpdate();
       React.useEffect(() => {
         self.refreshPanel = force;
         return () => {
           self.refreshPanel = null;
+          self.refresh();
         };
       }, []);
       const up = (v) => {
@@ -736,25 +1008,23 @@ module.exports = class AutoTranslate {
         setDmsState(v);
         self.setDms(v);
       };
+      const guildToggle = (id) => {
+        const next = off.includes(id)
+          ? off.filter((x) => x !== id)
+          : [...off, id];
+        setOff(next);
+        self.setDisabledGuilds(next);
+      };
 
+      const discordCode = self.LocaleStore.locale.split("-")[0];
       const osCode = osLocale();
-      let osName = "";
-      try {
-        osName =
-          new Intl.DisplayNames([osCode], { type: "language" }).of(osCode) ||
-          "";
-      } catch {}
-      const sysLabel = osName
-        ? `System language (${osName})`
-        : "System language";
-
-      const discordCode = self.LocaleStore?.locale?.split("-")[0];
-      const discordOption =
-        discordCode && discordCode !== osCode
+      const defaultLabel = `Discord language (${self.langNames[discordCode] || discordCode})`;
+      const systemOption =
+        osCode !== discordCode
           ? [
               {
-                label: `Discord language (${self.langNames[discordCode] || discordCode})`,
-                value: "_discord",
+                label: `System language (${langName(osCode)})`,
+                value: "_system",
               },
             ]
           : [];
@@ -774,7 +1044,18 @@ module.exports = class AutoTranslate {
         h(
           "div",
           { className: "at-head" },
-          h("span", { className: "bd-setting-title" }, "Translation filter"),
+          h(
+            "div",
+            { className: "at-label" },
+            h("span", { className: "at-title" }, "Language filter"),
+            h(
+              "span",
+              { className: "at-hint" },
+              invert
+                ? "Only messages in these languages will be translated"
+                : "Messages in these languages won't be translated",
+            ),
+          ),
           h(Pills, {
             options: [
               { label: "Skip", value: false },
@@ -806,7 +1087,7 @@ module.exports = class AutoTranslate {
             "div",
             { className: "at-add" },
             h(BdApi.Components.DropdownInput, {
-              key: list.length,
+              key: list.join(","),
               value: "_add",
               options: [
                 { label: "+ Add language", value: "_add" },
@@ -818,13 +1099,35 @@ module.exports = class AutoTranslate {
             }),
           ),
         ),
-        h(
-          "div",
-          { className: "bd-setting-note at-hint" },
-          invert
-            ? "Only messages in these languages will be translated"
-            : "Messages in these languages won't be translated",
-        ),
+      );
+
+      const guilds = self.GuildStore.getGuilds();
+      const order = self.SortedGuildStore.getFlattenedGuildIds();
+      const serverList = h(
+        "div",
+        { className: "at-srv-list" },
+        order
+          .map((id) => guilds[id])
+          .filter(Boolean)
+          .map((g) =>
+            h(
+              "div",
+              { key: g.id, className: "at-srv" },
+              self.GuildIcon &&
+                h(self.GuildIcon, {
+                  guildId: g.id,
+                  guildName: g.name,
+                  guildIcon: g.icon,
+                  iconSize: 32,
+                  className: "at-srv-icon",
+                }),
+              h("span", { className: "at-srv-name" }, g.name),
+              h(BdApi.Components.SwitchInput, {
+                value: !off.includes(g.id),
+                onChange: () => guildToggle(g.id),
+              }),
+            ),
+          ),
       );
 
       return h(
@@ -834,10 +1137,15 @@ module.exports = class AutoTranslate {
           BdApi.Components.SettingItem,
           { name: "Target language", inline: true },
           h(BdApi.Components.DropdownInput, {
-            value: target || "",
+            value:
+              target &&
+              target !== "_discord" &&
+              (target !== "_system" || systemOption.length)
+                ? target
+                : "",
             options: [
-              { label: sysLabel, value: "" },
-              ...discordOption,
+              { label: defaultLabel, value: "" },
+              ...systemOption,
               ...tlOptions,
             ],
             onChange: pick,
@@ -849,6 +1157,24 @@ module.exports = class AutoTranslate {
           h(BdApi.Components.SwitchInput, { value: dms, onChange: toggleDms }),
         ),
         card,
+        h(
+          "div",
+          { className: "at-adv" },
+          h(
+            "div",
+            {
+              className: "at-adv-head",
+              onClick: () => setServersOpen(!serversOpen),
+            },
+            h("span", { className: "at-adv-title" }, "Servers"),
+            h(
+              "span",
+              { className: "at-arrow" + (serversOpen ? " at-open" : "") },
+              "▶",
+            ),
+          ),
+          serversOpen && h("div", { className: "at-adv-body" }, serverList),
+        ),
       );
     }
     return h(Panel);
