@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Automatically translate messages in chat.
- * @version 0.3.0
+ * @version 0.3.1
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/AutoTranslate
  * @donate https://ko-fi.com/snues
@@ -28,7 +28,7 @@ const NOISE_RE =
   /[ \t]{2,}|https?:\/\/\S+|[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+|\b\d{1,3}(?:\.\d{1,3}){3}\b|\+\d[\d\s().-]{6,}\d|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\/\S*|```[\s\S]*?```|`[^`]+`|\|\||<a?:[a-zA-Z0-9_]+:\d+>|<@!?&?\d+>|<#\d+>|<t:-?\d+(?::[tTdDfFR])?>|<\/[^\s>][^>]*:\d+>|<[^>\n]*>|</gi;
 
 const MARK = "ZZZATMK";
-const MARK_RE = /ZZZATMK(\d+)ZZZATMK/g;
+const MARK_RE = /Z+ATMK(\d+)Z+ATMK/gi;
 
 function mask(text, offset = 0) {
   const tokens = [];
@@ -428,8 +428,11 @@ module.exports = class AutoTranslate {
       if (props.className?.includes("repliedTextContent")) return;
       if (!Array.isArray(ret?.props?.children)) return;
       if (unwanted(msg, this.myId)) return;
-      const orig = ret.props.children[0];
-      const extras = ret.props.children.slice(1);
+      const kids = ret.props.children;
+      const i = kids.findIndex((c) => Array.isArray(c));
+      if (i < 0) return;
+      const orig = kids[i];
+      const extras = kids.filter((_, j) => j !== i);
       ret.props.children = [
         h(
           BdApi.Components.ErrorBoundary,
