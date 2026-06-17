@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Automatically translate messages in chat.
- * @version 0.3.1
+ * @version 0.3.2
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/AutoTranslate
  * @donate https://ko-fi.com/snues
@@ -768,15 +768,18 @@ module.exports = class AutoTranslate {
     const trans = data?.[0];
     const srcs = data?.[1];
     if (!Array.isArray(trans) || trans.length !== texts.length) return null;
-    const decoder = document.createElement("textarea");
     return {
       results: trans.map((t, i) => {
-        decoder.innerHTML = t;
-        const text = decoder.value
+        const text = t
           .replace(/<br\s*\/?> ?/gi, "\n")
           .replace(/<b>([\s\S]*?)<\/b>/g, "**$1**")
           .replace(/<u>([\s\S]*?)<\/u>/g, "__$1__")
           .replace(/<s>([\s\S]*?)<\/s>/g, "~~$1~~")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&amp;/g, "&")
           .replace(/^>$/gm, "> ");
         return { text, src: srcs?.[i] || "auto" };
       }),
