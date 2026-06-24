@@ -1,11 +1,11 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 1.0.2
+ * @version 1.0.3
  * @author Snues
  * @invite xp2f3YFKMY
  * @authorId 98862725609816064
- * @source https://raw.githubusercontent.com/Snusene/BetterDiscordPlugins/main/Incognito/Incognito.plugin.js
+ * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/Incognito
  * @donate https://ko-fi.com/snues
  */
 
@@ -352,19 +352,25 @@ module.exports = class Incognito {
     }
 
     const { HTTPModule } = this.modules;
-    const isPremiumMarketing = (url) =>
-      typeof url === "string" && /\/api\/v\d+\/premium-marketing/.test(url);
+    const isTelemetryUrl = (url) =>
+      typeof url === "string" &&
+      /\/api\/v\d+\/(science|beaker|premium-marketing)/.test(url);
 
     const RequestProto = HTTPModule?.Request?.prototype;
     if (RequestProto?.end) {
-      patcher.before(RequestProto, "end", (thisObj) => {
-        if (thisObj.method === "POST" && isPremiumMarketing(thisObj.url)) {
-          thisObj.abort();
+      patcher.instead(RequestProto, "end", (thisObj, args, original) => {
+        if (thisObj.method === "POST" && isTelemetryUrl(thisObj.url)) {
           this.incrementStat("telemetryBlocked");
+          const cb = args[0];
+          if (typeof cb === "function") {
+            cb(null, { ok: true, status: 200, body: {} });
+          }
+          return thisObj;
         }
+        return original.apply(thisObj, args);
       });
     } else {
-      failed.push("premium-marketing");
+      failed.push("telemetry endpoints");
     }
 
     const { Dispatcher } = this.modules;
