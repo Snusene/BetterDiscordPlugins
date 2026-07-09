@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 1.0.4
+ * @version 1.0.5
  * @author Snues
  * @invite xp2f3YFKMY
  * @authorId 98862725609816064
@@ -35,6 +35,7 @@ const STAT_KEYS = [
   "trackingUrlsStripped",
   "idleSpoofed",
   "filesAnonymized",
+  "imagesStripped",
   "fingerprintsSpoofed",
 ];
 
@@ -147,6 +148,7 @@ module.exports = class Incognito {
       hideClientMods: true,
       stripUrlTrackers: true,
       anonymiseFiles: true,
+      stripMetadata: true,
     };
   }
 
@@ -176,10 +178,9 @@ module.exports = class Incognito {
   }
 
   start() {
-    this.settings = {
-      ...this.defaultSettings,
-      ...(this.api.Data.load("settings") ?? {}),
-    };
+    const saved = this.api.Data.load("settings") ?? {};
+    if ("anonymiseFiles" in saved) saved.stripMetadata ??= saved.anonymiseFiles;
+    this.settings = { ...this.defaultSettings, ...saved };
     this.failed = new Set(this.api.Data.load("failed") ?? []);
     this.modules = Incognito.getModules();
     this.initStats();
@@ -238,6 +239,7 @@ module.exports = class Incognito {
       hideClientMods: () => this.modules.ClientModsModule,
       stripUrlTrackers: () => this.modules.MessageActions?.sendMessage,
       anonymiseFiles: () => this.modules.Uploader,
+      stripMetadata: () => this.modules.Uploader,
     };
 
     let retried = false;
@@ -946,18 +948,38 @@ module.exports = class Incognito {
       return;
     }
 
+    patcher.before(Uploader.prototype, "uploadFiles", (_, [files]) => {
+      if (!files) return;
+      for (const fileObj of files) {
+        if (fileObj?.filename) {
+          fileObj.filename = this.generateFilename(fileObj.filename);
+          this.incrementStat("filesAnonymized");
+        }
+      }
+    });
+  }
+
+  stripMetadata() {
+    const patcher = this.getPatcher("stripMetadata");
+    const { Uploader } = this.modules;
+
+    if (!Uploader?.prototype?.uploadFiles) {
+      this.handleFailure("stripMetadata");
+      return;
+    }
+
     patcher.instead(
       Uploader.prototype,
       "uploadFiles",
       async (thisArg, [files], original) => {
         if (files) {
           for (const fileObj of files) {
-            if (fileObj?.filename) {
-              fileObj.filename = this.generateFilename(fileObj.filename);
-              this.incrementStat("filesAnonymized");
-            }
             if (fileObj?.file) {
-              fileObj.file = await this.stripImageMetadata(fileObj.file);
+              const cleaned = await this.stripImageMetadata(fileObj.file);
+              if (cleaned !== fileObj.file) {
+                fileObj.file = cleaned;
+                this.incrementStat("imagesStripped");
+              }
             }
           }
         }
@@ -1069,7 +1091,8 @@ module.exports = class Incognito {
       silentTyping: { key: "typingIndicatorsBlocked", label: "hidden" },
       spoofFingerprints: { key: "fingerprintsSpoofed", label: "spoofed" },
       stripUrlTrackers: { key: "trackingUrlsStripped", label: "stripped" },
-      anonymiseFiles: { key: "filesAnonymized", label: "anonymized" },
+      anonymiseFiles: { key: "filesAnonymized", label: "randomised" },
+      stripMetadata: { key: "imagesStripped", label: "stripped" },
     };
 
     const settingsConfig = [
@@ -1125,8 +1148,13 @@ module.exports = class Incognito {
       },
       {
         id: "anonymiseFiles",
-        name: "Anonymise Files",
-        note: "Randomises file names and strips metadata from images before upload.",
+        name: "Randomise File Names",
+        note: "Renames each file to random characters before upload.",
+      },
+      {
+        id: "stripMetadata",
+        name: "Strip Image Metadata",
+        note: "Wipes GPS location, camera model, and other hidden data before Discord ever sees it.",
       },
     ];
 
