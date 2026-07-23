@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 1.0.5
+ * @version 1.0.6
  * @author Snues
  * @invite xp2f3YFKMY
  * @authorId 98862725609816064
@@ -360,11 +360,16 @@ module.exports = class Incognito {
 
     const RequestProto = HTTPModule?.Request?.prototype;
     if (RequestProto?.end) {
-      patcher.before(RequestProto, "end", (thisObj) => {
+      patcher.instead(RequestProto, "end", (thisObj, args, original) => {
         if (thisObj.method === "POST" && isTelemetryUrl(thisObj.url)) {
-          thisObj.abort();
           this.incrementStat("telemetryBlocked");
+          const callback = args[0];
+          if (typeof callback === "function") {
+            callback(null, { ok: true, status: 200, body: {} });
+          }
+          return thisObj;
         }
+        return original.apply(thisObj, args);
       });
     } else {
       failed.push("telemetry endpoints");
