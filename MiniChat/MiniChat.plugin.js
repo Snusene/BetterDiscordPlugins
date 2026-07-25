@@ -1,7 +1,7 @@
 /**
  * @name MiniChat
  * @description Pop out any chat into a small Always on Top window.
- * @version 0.8.5
+ * @version 0.8.6
  * @invite xp2f3YFKMY
  * @author Snues
  * @authorId 98862725609816064
@@ -399,6 +399,7 @@ module.exports = class MiniChat {
         ["getChannelOverrides", {}],
         ["getMessageNotifications", 0],
         ["isMuted", false],
+        ["getGuildFlags", 0],
       ]) {
         this.api.Patcher.instead(ugss, fn, (_, a, orig) => {
           try {
@@ -535,11 +536,6 @@ module.exports = class MiniChat {
   close(channelId) {
     const wk = this.popouts.get(channelId);
     if (!wk) return;
-    this._dispatcher?.dispatch({
-      type: "DISABLE_AUTOMATIC_ACK",
-      channelId,
-      windowId: wk,
-    });
     this.modules.PopoutActions.close(wk);
     this.popouts.delete(channelId);
   }
@@ -586,11 +582,6 @@ module.exports = class MiniChat {
       { width: 500, height: 450 },
     );
     this.popouts.set(channelId, wk);
-    this._dispatcher?.dispatch({
-      type: "ENABLE_AUTOMATIC_ACK",
-      channelId,
-      windowId: wk,
-    });
 
     let tries = 0;
     const setup = () => {
