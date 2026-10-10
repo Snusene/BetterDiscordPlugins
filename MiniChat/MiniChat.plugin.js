@@ -1,7 +1,7 @@
 /**
  * @name MiniChat
  * @description Pop out any chat into a small Always on Top window.
- * @version 0.8.7
+ * @version 0.8.8
  * @invite xp2f3YFKMY
  * @author Snues
  * @authorId 98862725609816064
@@ -338,10 +338,8 @@ module.exports = class MiniChat {
     this._origInput = {
       gifs: { ...sb.gifs },
       stickers: { ...sb.stickers },
-      commands: sb.commands ? { ...sb.commands } : undefined,
     };
     sb.gifs.button = sb.stickers.button = sb.stickers.autoSuggest = true;
-    if (sb.commands) sb.commands.enabled = false;
   }
 
   restoreInput() {
@@ -350,8 +348,6 @@ module.exports = class MiniChat {
     const sb = ChatInputTypes.SIDEBAR;
     Object.assign(sb.gifs, this._origInput.gifs);
     Object.assign(sb.stickers, this._origInput.stickers);
-    if (this._origInput.commands && sb.commands)
-      Object.assign(sb.commands, this._origInput.commands);
     this._origInput = null;
   }
 
