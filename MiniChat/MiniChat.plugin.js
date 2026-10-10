@@ -1,7 +1,7 @@
 /**
  * @name MiniChat
  * @description Pop out any chat into a small Always on Top window.
- * @version 0.8.6
+ * @version 0.8.7
  * @invite xp2f3YFKMY
  * @author Snues
  * @authorId 98862725609816064
@@ -107,7 +107,7 @@ const MinIcon = svgIcon(h("path", { d: "M5 11h14v2H5z" }));
 
 const MaxIcon = svgIcon(h("path", { d: "M5 5v14h14V5H5zm12 12H7V7h10v10z" }));
 
-const NON_CHAT = [2, 13, 15, 16];
+const NON_CHAT = [15, 16];
 const mainDoc = document;
 let suspendFake = false;
 const popupCtx = React.createContext(false);
@@ -305,6 +305,7 @@ module.exports = class MiniChat {
   stop() {
     this.restoreInput();
     for (const cid of [...this.popouts.keys()]) this.close(cid);
+    this._vcAbort?.abort();
     this.stopAck();
     this.api.Patcher.unpatchAll();
     this.modules = this.settings = null;
@@ -448,13 +449,10 @@ module.exports = class MiniChat {
         },
         PopoutWindow: {
           filter: (e) => {
-            try {
-              const s = e?.render?.toString();
-              return s?.includes("guestWindow") && s.includes("windowKey");
-            } catch {
-              return false;
-            }
+            const s = (e?.render ?? e)?.toString?.() ?? "";
+            return s.includes("guestWindow") && s.includes("windowKey");
           },
+          searchExports: true,
         },
         IconUtils: {
           filter: Filters.byKeys("getGuildIconURL"),
@@ -470,7 +468,6 @@ module.exports = class MiniChat {
       UserGuildSettingsStore: Webpack.getStore("UserGuildSettingsStore"),
       GuildStore: Webpack.Stores.GuildStore,
       ChannelStore: Webpack.Stores.ChannelStore,
-      SelectedChannelStore: Webpack.Stores.SelectedChannelStore,
     };
   }
 
@@ -506,15 +503,14 @@ module.exports = class MiniChat {
 
   patchToolbar() {
     const [mod, key] = BdApi.Webpack.getWithKey(
-      (m) => headerLike(m) && !m.toString().includes("isAuthenticated"),
+      (m) => headerLike(m) && m.toString().includes("isAuthenticated"),
     );
     if (!mod) return;
     const Bar = mod[key];
     this.api.Patcher.before(mod, key, (_, [props]) => {
       if (popupCtx._currentValue) return;
       if (!props?.toolbar) return;
-      const chId = this.modules.SelectedChannelStore.getChannelId();
-      const ch = this.modules.ChannelStore.getChannel(chId);
+      const ch = this.modules.ChannelStore.getChannel(props.channelId);
       if (!ch || NON_CHAT.includes(ch.type)) return;
       props.toolbar = h(
         React.Fragment,
@@ -527,6 +523,26 @@ module.exports = class MiniChat {
         }),
         props.toolbar,
       );
+    });
+    const sidebar = BdApi.Webpack.Filters.byStrings("CallChatSidebar");
+    this._vcAbort = new AbortController();
+    BdApi.Webpack.waitForModule(sidebar, {
+      searchExports: true, raw: true, signal: this._vcAbort.signal,
+    }).then((raw) => {
+      const vc = raw?.exports;
+      const vcKey = vc && Object.keys(vc).find((k) => sidebar(vc[k]));
+      if (!vcKey) return;
+      this.api.Patcher.after(vc, vcKey, (_, [props], ret) => {
+        const bar = BdApi.Utils.findInTree(ret, (n) => n?.toolbar, {
+          walkable: ["props", "children"],
+        });
+        if (!bar) return;
+        const icon = h(Bar.Icon, {
+          icon: MiniIcon, tooltip: "MiniChat", "aria-label": "MiniChat",
+          onClick: () => this.open(props.channel.id),
+        });
+        bar.toolbar = h(React.Fragment, null, icon, bar.toolbar);
+      });
     });
     const header = mainDoc.querySelector('[class*="upperContainer__"]');
     const inst = header && BdApi.ReactUtils.getOwnerInstance(header);
