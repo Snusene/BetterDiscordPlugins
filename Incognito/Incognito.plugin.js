@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 1.0.7
+ * @version 1.0.8
  * @author Snues
  * @invite xp2f3YFKMY
  * @authorId 98862725609816064
@@ -71,7 +71,6 @@ module.exports = class Incognito {
       Analytics: { filter: Filters.byKeys("AnalyticEventConfigs") },
       NativeModule: { filter: Filters.byKeys("getDiscordUtils") },
       CrashReporter: { filter: (m) => m?.submitLiveCrashReport },
-      TypingModule: { filter: Filters.byKeys("startTyping", "stopTyping") },
       MessageActions: { filter: Filters.byKeys("sendMessage", "editMessage") },
       SuperProperties: {
         filter: Filters.byKeys(
@@ -141,7 +140,7 @@ module.exports = class Incognito {
       blockUsageProfiling: true,
       blockErrorReporting: true,
       blockProcessScanning: true,
-      blockReadReceipts: true,
+      blockReadReceipts: false,
       disableIdle: true,
       silentTyping: true,
       spoofFingerprints: true,
@@ -232,7 +231,7 @@ module.exports = class Incognito {
         this.modules.NativeModule?.getDiscordUtils?.(),
       blockReadReceipts: () => this.modules.HTTPModule?.Request?.prototype?.end,
       disableIdle: () => this.modules.IdleStore,
-      silentTyping: () => this.modules.TypingModule?.startTyping,
+      silentTyping: () => this.modules.Dispatcher?.dispatch,
       spoofFingerprints: () =>
         this.modules.SuperProperties?.getSuperProperties ||
         this.modules.TimezoneModule,
@@ -554,7 +553,9 @@ module.exports = class Incognito {
 
     const isAckUrl = (url) =>
       typeof url === "string" &&
-      /\/channels\/\d+\/messages\/\d+\/ack|\/read-states\/ack-bulk/.test(url);
+      /\/channels\/\d+\/(?:messages\/\d+|pins)\/ack|\/read-states\/ack-bulk|\/guilds\/\d+\/ack\/\d+\/\d+|\/users\/@me\/(?:\d+\/\d+\/|notification-center\/items\/(?:\d+\/)?(?:bulk-)?)ack/.test(
+        url,
+      );
 
     patcher.instead(RequestProto, "end", (thisObj, args, original) => {
       if (thisObj.method === "POST" && isAckUrl(thisObj.url)) {
@@ -590,22 +591,24 @@ module.exports = class Incognito {
 
   silentTyping() {
     const patcher = this.getPatcher("silentTyping");
-    const { TypingModule } = this.modules;
+    const { Dispatcher } = this.modules;
 
-    if (!TypingModule?.startTyping || !TypingModule?.stopTyping) {
+    if (!Dispatcher?.dispatch) {
       this.handleFailure("silentTyping");
       return;
     }
 
     let lastTypingStat = 0;
-    patcher.instead(TypingModule, "startTyping", () => {
-      const now = Date.now();
-      if (now - lastTypingStat > 10000) {
-        this.incrementStat("typingIndicatorsBlocked");
-        lastTypingStat = now;
+    patcher.before(Dispatcher, "dispatch", (_, [action]) => {
+      if (action.type === "TYPING_START_LOCAL") {
+        action.type = "__INCOGNITO_BLOCKED__";
+        const now = Date.now();
+        if (now - lastTypingStat > 10000) {
+          this.incrementStat("typingIndicatorsBlocked");
+          lastTypingStat = now;
+        }
       }
     });
-    patcher.instead(TypingModule, "stopTyping", () => {});
   }
 
   spoofFingerprints() {
