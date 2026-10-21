@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Get notified when messages match your keywords.
- * @version 3.0.0
+ * @version 3.0.2
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/KeywordPing
  * @donate https://ko-fi.com/snues
@@ -138,7 +138,7 @@ module.exports = class KeywordPing {
     this.ChannelTypes = null;
     this.MessageTypes = null;
     this.MessageFlags = null;
-    this.NotificationLevels = null;
+    this.FocusLock = null;
     this.saveMentions = null;
   }
 
@@ -157,7 +157,7 @@ module.exports = class KeywordPing {
           messageId: id,
         });
         if (cache !== this.cachedMessages) return;
-        if (msg) cache.set(id, msg);
+        if (msg?.id === id) cache.set(id, msg);
         else {
           this.keywordMentions.delete(id);
           pruned = true;
@@ -198,8 +198,8 @@ module.exports = class KeywordPing {
         filter: Filters.byKeys("SUPPRESS_NOTIFICATIONS", "EPHEMERAL"),
         searchExports: true,
       },
-      NotificationLevels: {
-        filter: Filters.byKeys("ALL_MESSAGES", "ONLY_MENTIONS"),
+      FocusLock: {
+        filter: Filters.byKeys("locks", "toggleLayer"),
         searchExports: true,
       },
     };
@@ -210,11 +210,12 @@ module.exports = class KeywordPing {
     }
     const missing = Object.keys(filters).filter((k) => !this[k]);
 
-    if (!this._muted && this.NotificationLevels) {
+    if (!this._muted) {
       const [notifModule, notifKey] = BdApi.Webpack.getWithKey(
         BdApi.Webpack.Filters.byStrings(
-          "parent_id",
           "isGuildOrCategoryOrChannelMuted",
+          "resolvedMessageNotifications",
+          "GUILD_TEXTUAL",
         ),
       );
       if (notifModule) {
@@ -222,9 +223,8 @@ module.exports = class KeywordPing {
           notifModule,
           notifKey,
           (thisVal, args, original) =>
-            this._force.has(args[0]?.id)
-              ? this.NotificationLevels.ALL_MESSAGES
-              : original.apply(thisVal, args),
+            this._force.has(args[0]?.channel_id) ||
+            original.apply(thisVal, args),
         );
         this._muted = true;
       }
@@ -355,6 +355,11 @@ module.exports = class KeywordPing {
         settings.whitelistedUsers.join("\n"),
       );
       const [advancedOpen, setAdvancedOpen] = React.useState(false);
+
+      React.useLayoutEffect(() => {
+        plugin.FocusLock.add("kp", () => {});
+        return () => plugin.FocusLock.remove("kp");
+      }, []);
 
       const keywordList = keywords.split("\n").filter((k) => k.trim());
       const keywordCount = keywordList.length;
@@ -592,8 +597,8 @@ module.exports = class KeywordPing {
       message.author,
       guildId,
     );
-    if (!matched && message.author.bot) return;
     if (!matched) {
+      const isBot = !!message.author.bot;
       const sources = [
         message.content,
         threadName,
@@ -607,6 +612,7 @@ module.exports = class KeywordPing {
         ]) || []),
       ].filter(Boolean);
       for (const compiled of this.compiledKeywords) {
+        if (isBot && !compiled.filter) continue;
         if (compiled.filter && !this.passesFilter(compiled.filter, message))
           continue;
         compiled.regex.lastIndex = 0;
@@ -669,9 +675,10 @@ module.exports = class KeywordPing {
       author,
       channel.guild_id,
     );
-    if (!matched && author.bot) return;
     if (!matched) {
+      const isBot = !!author.bot;
       for (const c of this.compiledKeywords) {
+        if (isBot && !c.filter) continue;
         if (c.filter && !this.passesFilter(c.filter, fakeMsg)) continue;
         c.regex.lastIndex = 0;
         if (c.regex.test(channel.name)) {
