@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="1236" height="736" alt="Incognito" src="https://github.com/user-attachments/assets/6f4b8279-e911-4420-9d96-108919dd28e5" />
+<img width="1236" height="736" alt="Incognito" src="https://github.com/user-attachments/assets/50dd3934-88bf-4b76-a962-81dfcac57778" />
 </p>
 
 <p>
@@ -13,8 +13,8 @@ Blocking read receipts is off by default to avoid confusion: viewing messages se
 <br/>
 
 <p align="center">
-  <img width="602" height="802" alt="settingsPreview" src="https://github.com/user-attachments/assets/2d4a8283-b4b2-4c54-8f4f-a2676221971e" />
-  <img width="602" height="560" alt="settingsPreview2" src="https://github.com/user-attachments/assets/edd9e5b1-b0f5-46af-93e5-c7ad616af2f9" />
+<img width="602" height="802" src="https://github.com/user-attachments/assets/d79c7491-3e0a-404c-816c-c0e7577345c3" />
+<img width="602" height="560" src="https://github.com/user-attachments/assets/6303d653-e688-412f-bfbc-0d6494f437a1" />
 </p>
 
 ## Credits
