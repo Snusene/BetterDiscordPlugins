@@ -355,7 +355,7 @@ module.exports = class Incognito {
     const { HTTPModule } = this.modules;
     const isTelemetryUrl = (url) =>
       typeof url === "string" &&
-      /\/api\/v\d+\/(science|beaker|premium-marketing)/.test(url);
+      /\/api\/v\d+\/(science|beaker|metrics|premium-marketing)/.test(url);
 
     const RequestProto = HTTPModule?.Request?.prototype;
     if (RequestProto?._end) {
