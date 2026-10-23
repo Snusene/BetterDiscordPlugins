@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 1.0.8
+ * @version 1.0.9
  * @author Snues
  * @invite xp2f3YFKMY
  * @authorId 98862725609816064
@@ -78,7 +78,10 @@ module.exports = class Incognito {
           "getSuperPropertiesBase64",
         ),
       },
-      Uploader: { filter: (m) => m?.prototype?.uploadFiles },
+      Uploader: {
+        filter: (m) => m?.prototype?.uploadFileToCloud,
+        searchExports: true,
+      },
       DebugOptionsStore: {
         filter: Filters.byKeys("getDebugOptionsHeaderValue"),
       },
@@ -395,27 +398,36 @@ module.exports = class Incognito {
     patcher.instead(
       Type2Manager,
       "updateAsync",
-      (_, [fieldName, mutator, delay], original) => {
-        if (FRECENCY_FIELDS.has(fieldName)) {
+      (thisObj, args, original) => {
+        if (FRECENCY_FIELDS.has(args[0])) {
           this.incrementStat("usageProfilingBlocked");
-          return;
+          return Promise.resolve();
         }
-        return original(fieldName, mutator, delay);
+        return original.apply(thisObj, args);
       },
     );
 
+    let lastStat = 0;
     this._callbackCheckInterval = setInterval(() => {
       const cbs = Type2Manager.beforeSendCallbacks;
       if (!Array.isArray(cbs) || cbs.length <= 1) return;
       clearInterval(this._callbackCheckInterval);
       this._callbackCheckInterval = null;
       this._originalCallbacks = cbs.map((cb) => ({
+        hasChanges: cb.hasChanges,
         processProto: cb.processProto,
       }));
       for (let i = 1; i < cbs.length; i++) {
-        if (cbs[i] && typeof cbs[i].processProto === "function") {
-          cbs[i].processProto = () => {};
-        }
+        const orig = this._originalCallbacks[i];
+        if (!cbs[i] || !orig) continue;
+        cbs[i].hasChanges = () => {
+          if (orig.hasChanges?.() && Date.now() - lastStat > 10000) {
+            this.incrementStat("usageProfilingBlocked");
+            lastStat = Date.now();
+          }
+          return false;
+        };
+        cbs[i].processProto = () => {};
       }
     }, 500);
   }
@@ -430,6 +442,7 @@ module.exports = class Incognito {
         i++
       ) {
         if (cbs[i] && this._originalCallbacks[i]) {
+          cbs[i].hasChanges = this._originalCallbacks[i].hasChanges;
           cbs[i].processProto = this._originalCallbacks[i].processProto;
         }
       }
@@ -508,9 +521,9 @@ module.exports = class Incognito {
       patcher.instead(
         NativeModule,
         "ensureModule",
-        (_, [moduleName], original) => {
-          if (moduleName?.includes("discord_rpc")) return;
-          return original(moduleName);
+        (thisObj, args, original) => {
+          if (args[0]?.includes("discord_rpc")) return;
+          return original.apply(thisObj, args);
         },
       );
     } else {
@@ -518,10 +531,21 @@ module.exports = class Incognito {
     }
 
     if (RunningGameStore) {
-      patcher.instead(RunningGameStore, "getVisibleGame", () => null);
-      patcher.instead(RunningGameStore, "getVisibleRunningGames", () => []);
-      patcher.instead(RunningGameStore, "getRunningGames", () => []);
-      patcher.instead(RunningGameStore, "getCandidateGames", () => []);
+      for (const k of [
+        "getVisibleGame",
+        "getCurrentGameForAnalytics",
+        "getCurrentNonGameForAnalytics",
+      ]) {
+        if (RunningGameStore[k]) patcher.instead(RunningGameStore, k, () => null);
+      }
+      for (const k of [
+        "getVisibleRunningGames",
+        "getRunningGames",
+        "getRunningNonGames",
+        "getCandidateGames",
+      ]) {
+        if (RunningGameStore[k]) patcher.instead(RunningGameStore, k, () => []);
+      }
     } else {
       failed.push("RunningGameStore");
     }
@@ -579,8 +603,8 @@ module.exports = class Incognito {
       return;
     }
 
-    patcher.instead(IdleStore, "isIdle", (_, __, original) => {
-      if (original()) {
+    patcher.instead(IdleStore, "isIdle", (thisObj, args, original) => {
+      if (original.apply(thisObj, args)) {
         this.incrementStat("idleSpoofed");
       }
       return false;
@@ -947,19 +971,26 @@ module.exports = class Incognito {
     const patcher = this.getPatcher("anonymiseFiles");
     const { Uploader } = this.modules;
 
-    if (!Uploader?.prototype?.uploadFiles) {
+    if (!Uploader?.prototype?.upload) {
       this.handleFailure("anonymiseFiles");
       return;
     }
 
-    patcher.before(Uploader.prototype, "uploadFiles", (_, [files]) => {
-      if (!files) return;
-      for (const fileObj of files) {
-        if (fileObj?.filename) {
-          fileObj.filename = this.generateFilename(fileObj.filename);
-          this.incrementStat("filesAnonymized");
-        }
+    patcher.before(Uploader.prototype, "upload", (u) => {
+      if (u._renamed || u.status === "COMPLETED") return;
+      const file = u.item?.file;
+      const name = u.filename || file?.name;
+      if (!name) return;
+      const newName = this.generateFilename(name);
+      u.filename = newName;
+      if (file) {
+        u.item.file = new File([file], newName, {
+          type: file.type,
+          lastModified: file.lastModified,
+        });
       }
+      u._renamed = true;
+      this.incrementStat("filesAnonymized");
     });
   }
 
@@ -967,29 +998,30 @@ module.exports = class Incognito {
     const patcher = this.getPatcher("stripMetadata");
     const { Uploader } = this.modules;
 
-    if (!Uploader?.prototype?.uploadFiles) {
+    if (!Uploader?.prototype?.upload) {
       this.handleFailure("stripMetadata");
       return;
     }
 
-    patcher.instead(
-      Uploader.prototype,
-      "uploadFiles",
-      async (thisArg, [files], original) => {
-        if (files) {
-          for (const fileObj of files) {
-            if (fileObj?.file) {
-              const cleaned = await this.stripImageMetadata(fileObj.file);
-              if (cleaned !== fileObj.file) {
-                fileObj.file = cleaned;
-                this.incrementStat("imagesStripped");
-              }
+    patcher.instead(Uploader.prototype, "upload", async (u, args, original) => {
+      if (!u._stripped && u.status !== "COMPLETED") {
+        u._stripped = true;
+        const file = u.item?.file;
+        if (file) {
+          const cleaned = await this.stripImageMetadata(file);
+          if (cleaned !== file) {
+            u.item.file = cleaned;
+            u.currentSize = u.preCompressionSize = cleaned.size;
+            if (u.item.compressionMetadata) {
+              u.item.compressionMetadata.preCompressionSize = cleaned.size;
             }
+            u._originalMd5 = null;
+            this.incrementStat("imagesStripped");
           }
         }
-        return original.call(thisArg, files);
-      },
-    );
+      }
+      return original.apply(u, args);
+    });
   }
 
   disableFeature(feature) {
