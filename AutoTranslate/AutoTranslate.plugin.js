@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Automatically translate messages in chat.
- * @version 0.3.2
+ * @version 0.3.3
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/AutoTranslate
  * @donate https://ko-fi.com/snues
@@ -540,9 +540,13 @@ module.exports = class AutoTranslate {
 
   render(t, extras = []) {
     if (!t.parsed) {
+      const opts = {
+        channelId: t.channel_id,
+        guildId: this.ChannelStore?.getChannel(t.channel_id)?.guild_id,
+      };
       t.parsed = {
-        text: this.parser.parse(t.text),
-        raw: this.parser.parse(t.raw),
+        text: this.parser.parse(t.text, true, opts),
+        raw: this.parser.parse(t.raw, true, opts),
         srcLabel: (this.langNames[t.src] || t.src)
           .toLowerCase()
           .replace(/[()]/g, ""),
