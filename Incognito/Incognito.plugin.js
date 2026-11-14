@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 1.0.9
+ * @version 1.0.10
  * @author Snues
  * @invite xp2f3YFKMY
  * @authorId 98862725609816064
@@ -62,13 +62,33 @@ module.exports = class Incognito {
     return null;
   }
 
+  static getExportKey(mod, name, match) {
+    if (!mod) return null;
+    if (typeof mod[name] === "function") return name;
+    return (
+      Object.keys(mod).find((k) => {
+        const fn = mod[k];
+        return typeof fn === "function" && match(fn.toString());
+      }) ?? null
+    );
+  }
+
   static getModules() {
     const { Stores, Filters } = BdApi.Webpack;
     const bySrc = (s) => (v) =>
       typeof v === "function" && v.toString().includes(s);
+    const isTzFn = (v) =>
+      typeof v === "function" &&
+      v.toString().length < 300 &&
+      v.toString().includes("resolvedOptions().timeZone");
 
     const bulk = BdApi.Webpack.getBulkKeyed({
-      Analytics: { filter: Filters.byKeys("AnalyticEventConfigs") },
+      Analytics: {
+        filter: (m) =>
+          (m?.AnalyticEventConfigs || m?.addExtraAnalyticsDecorator) &&
+          m?.default?.track,
+        searchDefault: false,
+      },
       NativeModule: { filter: Filters.byKeys("getDiscordUtils") },
       CrashReporter: { filter: (m) => m?.submitLiveCrashReport },
       MessageActions: { filter: Filters.byKeys("sendMessage", "editMessage") },
@@ -82,9 +102,6 @@ module.exports = class Incognito {
         filter: (m) => m?.prototype?.uploadFileToCloud,
         searchExports: true,
       },
-      DebugOptionsStore: {
-        filter: Filters.byKeys("getDebugOptionsHeaderValue"),
-      },
       MetricsModule: { filter: Filters.byKeys("increment", "distribution") },
       ConsentModule: {
         filter: Filters.bySource("SETTINGS_CONSENT"),
@@ -92,7 +109,15 @@ module.exports = class Incognito {
       },
       HTTPModule: { filter: Filters.byKeys("Request", "post", "get", "del") },
       _tzRaw: {
-        filter: Filters.bySource("resolvedOptions().timeZone"),
+        filter: (m) => {
+          if (!m || typeof m !== "object" || m.$$typeof) return false;
+          const keys = Object.keys(m);
+          return (
+            keys.length > 0 &&
+            keys.length <= 4 &&
+            keys.some((k) => isTzFn(m[k]))
+          );
+        },
         searchDefault: false,
       },
       _cmRaw: {
@@ -121,9 +146,11 @@ module.exports = class Incognito {
       ActivityTrackingStore: Stores.ActivityTrackingStore,
       IdleStore: Stores.IdleStore,
       ConsentStore: Stores.ConsentStore,
+      DebugOptionsStore:
+        Stores.DeveloperOptionsStore ?? Stores.DebugOptionsStore,
       RunningGameStore: Stores.RunningGameStore,
       Dispatcher: Stores.ReadStateStore?._dispatcher,
-      TimezoneModule: Incognito.resolveModKey(_tzRaw),
+      TimezoneModule: Incognito.resolveModKey(_tzRaw, isTzFn),
       ClientModsModule: Incognito.resolveModKey(_cmRaw),
       Type2Manager: Incognito.resolveType2Manager(_settingsProtoRaw),
       Clipboard: Incognito.resolveModKey(
@@ -226,7 +253,8 @@ module.exports = class Incognito {
 
   retryFailed() {
     const featureModules = {
-      blockTelemetry: () => this.modules.Analytics,
+      blockTelemetry: () =>
+        this.modules.Analytics && this.modules.DebugOptionsStore,
       blockUsageProfiling: () => this.modules.Type2Manager?.updateAsync,
       blockErrorReporting: () =>
         window.DiscordSentry?.getClient?.() || this.modules.CrashReporter,
@@ -270,6 +298,7 @@ module.exports = class Incognito {
 
   handleFailure(feature, failed = null) {
     if (failed !== null && failed.length === 0) return;
+    this.disableFeature(feature);
     this.markFailed(feature);
     this.api.UI.showToast(`Incognito: ${feature} unavailable`, {
       type: "warning",
@@ -287,21 +316,31 @@ module.exports = class Incognito {
       if (Analytics.default?.track) {
         patcher.instead(Analytics.default, "track", () => {
           this.incrementStat("telemetryBlocked");
+          return Promise.resolve();
         });
       } else {
         failed.push("events");
       }
 
-      if (Analytics.trackNetworkAction) {
-        patcher.instead(Analytics, "trackNetworkAction", () => {});
-      } else {
-        failed.push("network");
-      }
-
-      if (Analytics.debugLogEvent) {
-        patcher.instead(Analytics, "debugLogEvent", () => {});
-      } else {
-        failed.push("debug logs");
+      const methods = [
+        [
+          "trackNetworkAction",
+          (s) => /type:\s*["']action["']/.test(s),
+          "network",
+        ],
+        [
+          "debugLogEvent",
+          (s) => s.includes("AnalyticsUtils.track"),
+          "debug logs",
+        ],
+      ];
+      for (const [name, match, label] of methods) {
+        const key = Incognito.getExportKey(Analytics, name, match);
+        if (key) {
+          patcher.instead(Analytics, key, () => {});
+        } else {
+          failed.push(label);
+        }
       }
     }
 
@@ -319,13 +358,22 @@ module.exports = class Incognito {
       if (MetricsModule.distribution) {
         patcher.instead(MetricsModule, "distribution", () => {});
       }
+      if (MetricsModule._flush) {
+        patcher.instead(MetricsModule, "_flush", () => {});
+      }
+      if (Array.isArray(MetricsModule._metrics)) {
+        MetricsModule._metrics.length = 0;
+      }
     } else {
       failed.push("metrics");
     }
 
     const { ConsentStore, ConsentModule, DebugOptionsStore } = this.modules;
     if (ConsentStore?.hasConsented) {
-      patcher.instead(ConsentStore, "hasConsented", () => false);
+      patcher.instead(ConsentStore, "hasConsented", (thisObj, args, orig) => {
+        if (args[0] === "usage_statistics") return false;
+        return orig.apply(thisObj, args);
+      });
     } else {
       failed.push("consents");
     }
@@ -340,32 +388,24 @@ module.exports = class Incognito {
       failed.push("debug options");
     }
 
-    if (ConsentModule?.Q && ConsentModule?.U) {
-      ConsentModule.Q()
-        .then((consents) => {
-          const toRevoke = [];
-          if (consents.usage_statistics?.consented)
-            toRevoke.push("usage_statistics");
-          if (consents.personalization?.consented)
-            toRevoke.push("personalization");
-          if (toRevoke.length > 0) {
-            return ConsentModule.U([], toRevoke);
-          }
-        })
-        .catch(() => {});
-    }
-
     const { HTTPModule } = this.modules;
+    const telemetryRe =
+      /\/api(?:\/v\d+)?\/(science|beaker|metrics|premium-marketing)(?:[/?#]|$)/;
     const isTelemetryUrl = (url) =>
-      typeof url === "string" &&
-      /\/api\/v\d+\/(science|beaker|metrics|premium-marketing)/.test(url);
+      typeof url === "string" && telemetryRe.test(url);
 
     const RequestProto = HTTPModule?.Request?.prototype;
     if (RequestProto?._end) {
       patcher.instead(RequestProto, "_end", (thisObj, args, original) => {
         if (thisObj.method === "POST" && isTelemetryUrl(thisObj.url)) {
           this.incrementStat("telemetryBlocked");
-          return thisObj._callback(null, { ok: true, status: 200, body: {} });
+          thisObj._callback?.(null, {
+            ok: true,
+            status: 200,
+            body: {},
+            headers: {},
+          });
+          return thisObj;
         }
         return original.apply(thisObj, args);
       });
@@ -373,17 +413,61 @@ module.exports = class Incognito {
       failed.push("telemetry endpoints");
     }
 
+    if (typeof window.fetch === "function") {
+      patcher.instead(window, "fetch", (thisObj, args, original) => {
+        const [input, init] = args;
+        const url =
+          typeof input === "string" ? input : (input?.href ?? input?.url);
+        const method = (init?.method ?? input?.method ?? "GET").toUpperCase();
+        if (method === "POST" && isTelemetryUrl(url)) {
+          this.incrementStat("telemetryBlocked");
+          return Promise.resolve(Response.json({}));
+        }
+        return original.apply(thisObj ?? window, args);
+      });
+    }
+
     const { Dispatcher } = this.modules;
     if (Dispatcher?.dispatch) {
       patcher.before(Dispatcher, "dispatch", (_, [action]) => {
-        if (action.type === "CONTENT_INVENTORY_TRACK_ITEM_IMPRESSIONS") {
+        if (action.type === "TRACK") {
           action.type = "__INCOGNITO_BLOCKED__";
+          action.resolve?.();
           this.incrementStat("telemetryBlocked");
         }
       });
     }
 
     this.handleFailure("blockTelemetry", failed);
+    if (failed.length) return;
+
+    if (
+      !ConsentStore?.receivedConsentsInConnectionOpen ||
+      ConsentStore.consents?.usage_statistics?.consented
+    ) {
+      const fetchKey = Incognito.getExportKey(
+        ConsentModule,
+        "fetchConsents",
+        (s) => s.includes("SETTINGS_CONSENT") && !s.includes("grant:"),
+      );
+      const updateKey = Incognito.getExportKey(
+        ConsentModule,
+        "updateConsents",
+        (s) => s.includes("SETTINGS_CONSENT") && s.includes("grant:"),
+      );
+      if (fetchKey && updateKey) {
+        ConsentModule[fetchKey]()
+          .then((consents) => {
+            if (
+              this.patchers.blockTelemetry &&
+              consents?.usage_statistics?.consented
+            ) {
+              return ConsentModule[updateKey]([], ["usage_statistics"]);
+            }
+          })
+          .catch(() => {});
+      }
+    }
   }
 
   blockUsageProfiling() {
@@ -637,24 +721,34 @@ module.exports = class Incognito {
 
   spoofFingerprints() {
     const patcher = this.getPatcher("spoofFingerprints");
-    const { SuperProperties, TimezoneModule } = this.modules;
+    const { Analytics, SuperProperties, TimezoneModule } = this.modules;
     let failed = [];
 
-    if (SuperProperties?.getSuperProperties) {
-      let lastFingerprintStat = 0;
-      patcher.after(SuperProperties, "getSuperProperties", (_, __, ret) => {
-        ret.system_locale = "en-US";
-        ret.client_app_state = "focused";
-        const now = Date.now();
-        if (now - lastFingerprintStat > 10000) {
-          this.incrementStat("fingerprintsSpoofed");
-          lastFingerprintStat = now;
-        }
-      });
+    const targets = [...new Set([SuperProperties, Analytics?.default])].filter(
+      (m) => m?.getSuperProperties,
+    );
 
-      patcher.instead(SuperProperties, "getSuperPropertiesBase64", () => {
-        return btoa(JSON.stringify(SuperProperties.getSuperProperties()));
-      });
+    if (targets.length > 0) {
+      let lastFingerprintStat = 0;
+      for (const target of targets) {
+        patcher.after(target, "getSuperProperties", (_, __, ret) => {
+          if (!ret) return;
+          ret.system_locale = "en-US";
+          ret.client_app_state = "focused";
+          const now = Date.now();
+          if (now - lastFingerprintStat > 10000) {
+            this.incrementStat("fingerprintsSpoofed");
+            lastFingerprintStat = now;
+          }
+        });
+
+        patcher.instead(target, "getSuperPropertiesBase64", () => {
+          const props = target.getSuperProperties();
+          return target.encodeProperties
+            ? target.encodeProperties(props)
+            : btoa(JSON.stringify(props));
+        });
+      }
     } else {
       failed.push("locale");
     }
