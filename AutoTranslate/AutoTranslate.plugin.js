@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Automatically translate messages in chat.
- * @version 0.3.3
+ * @version 0.3.4
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/AutoTranslate
  * @donate https://ko-fi.com/snues
@@ -16,7 +16,7 @@ const TYPES = new Set([0, 19, 20, 21, 23]);
 
 const ASCII_RE = /^[\x20-\x7E]+$/;
 const SKIP_RE =
-  /^(wdym|wym|wyd|wyll|wyp|omw|otw|omfg|uwu|owo|idgaf|dgaf|idek|ime|istg|iykyk|hmu|ama|til|kys|sus|soz|urw|ynk|zoomer|gigachad|nepo|eta|vid|hru|ezpz|lmaoo|lmaooo|sussy|sumthn|ggez|lulw|imk|iono|icymi|og|smol|ngmi|copium|hopium|mald|wojak|omegalul|monkaw|kekw|rekt|fanum|wonk|bussin|sadge|baes|imba|defo|presh|yote|yike|finna|wat|probly|okies|okayy|ahaha|yaas|mwah|kbai|kbye|wildin|simpin|grindin|daammn|ymd|brainrot|lol|lmao|rofl|smh|ngl|tbh|btw|fyi|pog|bruh)[!?.,]*$/i;
+  /^(wdym|wym|wyd|wyll|wyp|omw|otw|omfg|uwu|owo|idgaf|dgaf|idek|ime|istg|iykyk|hmu|ama|til|kys|sus|soz|urw|ynk|zoomer|gigachad|nepo|eta|vid|hru|ezpz|lmaoo|lmaooo|sussy|sumthn|ggez|lul|lulw|imk|iono|icymi|og|smol|ngmi|copium|hopium|mald|wojak|omegalul|monkaw|kekw|rekt|fanum|wonk|bussin|sadge|baes|imba|defo|presh|yote|yike|finna|wat|probly|okies|okayy|ahaha|yaas|mwah|kbai|kbye|wildin|simpin|grindin|daammn|ymd|brainrot|lol|lmao|rofl|smh|ngl|tbh|btw|fyi|pog|bruh)[!?.,]*$/i;
 const CONS_RE = /^[bcdfghjklmnpqrstvwxz]{2,6}[!?.,]*$/i;
 const HASH_RE = /^[A-Fa-f0-9]{12,}$/;
 const RULE_RE = /^[\s\-=*_~`>|[\]()]+$/;
@@ -25,17 +25,18 @@ const CJK_RE =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}]/u;
 
 const NOISE_RE =
-  /[ \t]{2,}|https?:\/\/\S+|[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+|\b\d{1,3}(?:\.\d{1,3}){3}\b|\+\d[\d\s().-]{6,}\d|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\/\S*|```[\s\S]*?```|`[^`]+`|\|\||<a?:[a-zA-Z0-9_]+:\d+>|<@!?&?\d+>|<#\d+>|<t:-?\d+(?::[tTdDfFR])?>|<\/[^\s>][^>]*:\d+>|<[^>\n]*>|</gi;
+  /https?:\/\/\S+|[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+|\b\d{1,3}(?:\.\d{1,3}){3}\b|\+\d[\d\s().-]{6,}\d|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\/\S*|```[\s\S]*?```|`[^`]+`|\|\||<a?:[a-zA-Z0-9_]+:\d+>|<@!?&?\d+>|<#\d+>|<t:-?\d+(?::[tTdDfFR])?>|<\/[^\s>][^>]*:\d+>|<[^>\n]*>|</gi;
 
-const MARK = "ZZZATMK";
-const MARK_RE = /Z+ATMK(\d+)Z+ATMK/gi;
+const MARK_L = "[ZZZATMK";
+const MARK_R = "]";
+const MARK_RE = /[\[【［]?\s*Z+ATMK(\d+)\s*[\]】］]?/gi;
 
 function mask(text, offset = 0) {
   const tokens = [];
   return {
     masked: text.replace(
       NOISE_RE,
-      (m) => MARK + (tokens.push(m) - 1 + offset) + MARK,
+      (m) => MARK_L + (tokens.push(m) - 1 + offset) + MARK_R,
     ),
     tokens,
     offset,
