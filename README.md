@@ -29,6 +29,6 @@ Better embeds for Twitch links.
 [keywordping-version-badge]: https://img.shields.io/badge/version-3.0.2-brightgreen
 [incognito-version-badge]: https://img.shields.io/badge/version-1.0.11-brightgreen
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-3.0.4-brightgreen
-[minichat-version-badge]: https://img.shields.io/badge/version-0.8.8-brightgreen
+[minichat-version-badge]: https://img.shields.io/badge/version-0.8.9-brightgreen
 [prioritydm-version-badge]: https://img.shields.io/badge/version-1.1.0-brightgreen
 [scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.4-brightgreen
