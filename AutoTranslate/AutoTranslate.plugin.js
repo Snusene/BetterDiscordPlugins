@@ -3,7 +3,7 @@
  * @author Snues
  * @authorId 98862725609816064
  * @description Automatically translate messages in chat.
- * @version 0.3.4
+ * @version 0.3.5
  * @invite xp2f3YFKMY
  * @source https://github.com/Snusene/BetterDiscordPlugins/tree/main/AutoTranslate
  * @donate https://ko-fi.com/snues
