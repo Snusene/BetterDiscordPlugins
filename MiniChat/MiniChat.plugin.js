@@ -1,7 +1,7 @@
 /**
  * @name MiniChat
  * @description Pop out any chat into a small Always on Top window.
- * @version 0.8.8
+ * @version 0.8.9
  * @invite xp2f3YFKMY
  * @author Snues
  * @authorId 98862725609816064
@@ -64,8 +64,9 @@ const STYLES = `
   border-radius: 7px;
   margin-right: var(--space-8);
 }
-.mc-popout [class*="upperContainer"] [class*="topic__"],
-.mc-popout [class*="upperContainer"] [class*="dot__"] {
+.mc-popout [class*="upperContainer"] [class*="topic_"],
+.mc-popout [class*="upperContainer"] [class*="dot_"],
+.mc-popout [class*="upperContainer"] [class*="leadingBar_"] {
   display: none !important;
 }
 .mc-popout form[class*="form_"] {
@@ -147,7 +148,7 @@ function syncBdStyles(doc) {
 }
 
 function getTheme() {
-  const mainBg = mainDoc.querySelector('[class*="bg__"]');
+  const mainBg = mainDoc.querySelector('[class^="bg_"], [class*=" bg_"]');
   if (!mainBg) return null;
   const bgParent = mainBg.parentElement;
   const layers = bgParent?.querySelector('[class*="layers"]');
@@ -309,6 +310,13 @@ module.exports = class MiniChat {
     this.stopAck();
     this.api.Patcher.unpatchAll();
     this.modules = this.settings = null;
+    this.refreshHeader();
+  }
+
+  refreshHeader() {
+    const header = mainDoc.querySelector('[class*="upperContainer_"]');
+    const inst = header && BdApi.ReactUtils.getOwnerInstance(header);
+    if (inst) inst.forceUpdate();
   }
 
   startAck() {
@@ -317,7 +325,7 @@ module.exports = class MiniChat {
     this._dispatcher = BdApi.Webpack.Stores.UserStore._dispatcher;
     this._onMessage = (e) => {
       if (!this.popouts.has(e.channelId)) return;
-      AckActions.ack(e.channelId, undefined, true, true, e.message?.id);
+      AckActions.ack(e.channelId, undefined, false, false, e.message?.id);
       this._dispatcher.dispatch({
         type: "CHANNEL_LOCAL_ACK",
         channelId: e.channelId,
@@ -414,6 +422,8 @@ module.exports = class MiniChat {
       Webpack,
       Webpack: { Filters },
     } = BdApi;
+    const match = (re) => (v) =>
+      typeof v === "function" && re.test(v.toString());
     return {
       ...Webpack.getBulkKeyed({
         SplitView: {
@@ -438,10 +448,23 @@ module.exports = class MiniChat {
           searchExports: true,
         },
         PopoutActions: {
-          filter: Filters.byKeys("open", "close", "setAlwaysOnTop"),
+          filter: Filters.bySource(
+            /type:\s*["']POPOUT_WINDOW_OPEN["']/,
+            /type:\s*["']POPOUT_WINDOW_CLOSE["']/,
+          ),
+          searchDefault: false,
+          map: {
+            open: match(/type:\s*["']POPOUT_WINDOW_OPEN["']/),
+            close: match(/type:\s*["']POPOUT_WINDOW_CLOSE["']/),
+            setAlwaysOnTop: match(
+              /type:\s*["']POPOUT_WINDOW_SET_ALWAYS_ON_TOP["']/,
+            ),
+          },
         },
         AckActions: {
-          filter: Filters.byKeys("ack"),
+          filter: Filters.bySource(/type:\s*["']CHANNEL_ACK["']/, "immediate:"),
+          searchDefault: false,
+          map: { ack: match(/type:\s*["']CHANNEL_ACK["']/) },
         },
         PopoutWindow: {
           filter: (e) => {
@@ -481,8 +504,19 @@ module.exports = class MiniChat {
       onChange: (_, id, val) => {
         this.settings[id] = val;
         this.api.Data.save("settings", this.settings);
+        if (id === "alwaysOnTop") {
+          for (const wk of this.popouts.values()) {
+            this.setAlwaysOnTop(wk, !!val);
+          }
+        }
       },
     });
+  }
+
+  setAlwaysOnTop(wk, val) {
+    const { PopoutActions, Native } = this.modules || {};
+    if (PopoutActions?.setAlwaysOnTop) PopoutActions.setAlwaysOnTop(wk, val);
+    else Native?.setAlwaysOnTop(wk, val);
   }
 
   guildIcon(channelId) {
@@ -540,25 +574,25 @@ module.exports = class MiniChat {
         bar.toolbar = h(React.Fragment, null, icon, bar.toolbar);
       });
     });
-    const header = mainDoc.querySelector('[class*="upperContainer__"]');
-    const inst = header && BdApi.ReactUtils.getOwnerInstance(header);
-    if (inst) inst.forceUpdate();
+    this.refreshHeader();
   }
 
   close(channelId) {
     const wk = this.popouts.get(channelId);
     if (!wk) return;
-    this.modules.PopoutActions.close(wk);
+    this.modules?.PopoutActions?.close?.(wk);
     this.popouts.delete(channelId);
   }
 
   ensure() {
-    if (this.modules.SplitView && this.modules.PopoutWindow) return;
+    const m = this.modules;
+    if (!m || (m.SplitView && m.PopoutWindow && m.PopoutActions?.open)) return;
     const fresh = MiniChat.getModules();
     for (const k in fresh) this.modules[k] ??= fresh[k];
   }
 
   open(channelId) {
+    if (!this.modules) return;
     this.ensure();
     const { PopoutActions, PopoutWindow, PopoutWindowStore, ChannelStore } =
       this.modules;
@@ -568,12 +602,12 @@ module.exports = class MiniChat {
       return;
     }
     this.popouts.delete(channelId);
-    if (!PopoutWindow) return;
+    if (!PopoutWindow || !PopoutActions?.open) return;
 
     const channel = ChannelStore.getChannel(channelId);
     const name = channel ? channel.name || "DM" : "Chat";
     const headerNode = mainDoc
-      .querySelector('[class*="upperContainer__"] [class*="children__"]')
+      .querySelector('[class*="upperContainer_"] [class*="children_"]')
       ?.cloneNode(true);
     const guildIconUrl = this.guildIcon(channelId);
     const onClose = () => this.close(channelId);
@@ -591,7 +625,11 @@ module.exports = class MiniChat {
             onClose,
           }),
         ),
-      { width: 500, height: 450 },
+      {
+        width: 500,
+        height: 450,
+        defaultAlwaysOnTop: !!this.settings?.alwaysOnTop,
+      },
     );
     this.popouts.set(channelId, wk);
 
@@ -600,9 +638,12 @@ module.exports = class MiniChat {
       if (!this.popouts.has(channelId) || tries++ > 20) return;
       const w = PopoutWindowStore.getWindow(wk);
       if (!w) return setTimeout(setup, 100);
+      w.addEventListener("beforeunload", () => {
+        if (!PopoutWindowStore.getWindowOpen(wk))
+          this.popouts.delete(channelId);
+      });
       w.resizeTo(500, 450);
-      if (this.settings?.alwaysOnTop)
-        this.modules.Native?.setAlwaysOnTop(wk, true);
+      this.setAlwaysOnTop(wk, !!this.settings?.alwaysOnTop);
     };
     setTimeout(setup, 300);
   }
