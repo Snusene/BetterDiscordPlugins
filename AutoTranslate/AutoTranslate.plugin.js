@@ -107,10 +107,10 @@ function cap(map, key, value, limit) {
   while (map.size > limit) map.delete(map.keys().next().value);
 }
 
-const unwanted = (msg, myId) =>
+const unwanted = (msg, myId, bots) =>
   !TYPES.has(msg.type ?? 0) ||
   msg.author?.id === myId ||
-  msg.author?.bot ||
+  (msg.author?.bot && !bots) ||
   !!(msg.webhookId && !msg.applicationId);
 
 function Pills({ options, value, onChange }) {
@@ -308,6 +308,7 @@ module.exports = class AutoTranslate {
       invert: saved?.invert || false,
       targetLang: saved?.targetLang || null,
       dms: saved?.dms ?? false,
+      bots: saved?.bots ?? false,
       disabledGuilds: saved?.disabledGuilds || [],
       seen: saved?.seen ?? false,
     };
@@ -428,7 +429,7 @@ module.exports = class AutoTranslate {
       if (!msg?.id) return;
       if (props.className?.includes("repliedTextContent")) return;
       if (!Array.isArray(ret?.props?.children)) return;
-      if (unwanted(msg, this.myId)) return;
+      if (unwanted(msg, this.myId, this.settings.bots)) return;
       const kids = ret.props.children;
       const i = kids.findIndex((c) => Array.isArray(c));
       if (i < 0) return;
@@ -937,6 +938,9 @@ module.exports = class AutoTranslate {
   setDms(v) {
     this.mutate({ dms: v }, this.apply);
   }
+  setBots(v) {
+    this.mutate({ bots: v }, this.apply);
+  }
   setDisabledGuilds(list) {
     this.mutate({ disabledGuilds: list }, this.apply);
   }
@@ -993,6 +997,7 @@ module.exports = class AutoTranslate {
       const [invert, setInvState] = React.useState(self.settings.invert);
       const [target, setTargetState] = React.useState(self.settings.targetLang);
       const [dms, setDmsState] = React.useState(self.settings.dms);
+      const [bots, setBotsState] = React.useState(self.settings.bots);
       const [off, setOff] = React.useState(self.settings.disabledGuilds);
       const [serversOpen, setServersOpen] = React.useState(false);
       const [, force] = BdApi.Hooks.useForceUpdate();
@@ -1018,6 +1023,10 @@ module.exports = class AutoTranslate {
       const toggleDms = (v) => {
         setDmsState(v);
         self.setDms(v);
+      };
+      const toggleBots = (v) => {
+        setBotsState(v);
+        self.setBots(v);
       };
       const guildToggle = (id) => {
         const next = off.includes(id)
@@ -1166,6 +1175,11 @@ module.exports = class AutoTranslate {
           BdApi.Components.SettingItem,
           { name: "Translate direct messages", inline: true },
           h(BdApi.Components.SwitchInput, { value: dms, onChange: toggleDms }),
+        ),
+        h(
+          BdApi.Components.SettingItem,
+          { name: "Translate bot messages", inline: true },
+          h(BdApi.Components.SwitchInput, { value: bots, onChange: toggleBots }),
         ),
         card,
         h(
