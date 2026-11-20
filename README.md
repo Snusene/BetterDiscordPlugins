@@ -31,4 +31,4 @@ Better embeds for Twitch links.
 [twitchpreview-version-badge]: https://img.shields.io/badge/version-3.0.4-brightgreen
 [minichat-version-badge]: https://img.shields.io/badge/version-0.8.9-brightgreen
 [prioritydm-version-badge]: https://img.shields.io/badge/version-1.1.0-brightgreen
-[scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.4-brightgreen
+[scrolltolatest-version-badge]: https://img.shields.io/badge/version-1.0.6-brightgreen
