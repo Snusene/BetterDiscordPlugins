@@ -1,7 +1,7 @@
 /**
  * @name Incognito
  * @description Stop tracking, hide typing, spoof fingerprints, and much more.
- * @version 1.0.10
+ * @version 1.0.11
  * @author Snues
  * @invite xp2f3YFKMY
  * @authorId 98862725609816064
@@ -62,17 +62,6 @@ module.exports = class Incognito {
     return null;
   }
 
-  static getExportKey(mod, name, match) {
-    if (!mod) return null;
-    if (typeof mod[name] === "function") return name;
-    return (
-      Object.keys(mod).find((k) => {
-        const fn = mod[k];
-        return typeof fn === "function" && match(fn.toString());
-      }) ?? null
-    );
-  }
-
   static getModules() {
     const { Stores, Filters } = BdApi.Webpack;
     const bySrc = (s) => (v) =>
@@ -88,6 +77,13 @@ module.exports = class Incognito {
           (m?.AnalyticEventConfigs || m?.addExtraAnalyticsDecorator) &&
           m?.default?.track,
         searchDefault: false,
+        map: {
+          default: (v) => typeof v?.track === "function",
+          trackNetworkAction: (v) =>
+            typeof v === "function" &&
+            /type:\s*["']action["']/.test(v.toString()),
+          debugLogEvent: bySrc("AnalyticsUtils.track"),
+        },
       },
       NativeModule: { filter: Filters.byKeys("getDiscordUtils") },
       CrashReporter: { filter: (m) => m?.submitLiveCrashReport },
@@ -104,8 +100,14 @@ module.exports = class Incognito {
       },
       MetricsModule: { filter: Filters.byKeys("increment", "distribution") },
       ConsentModule: {
-        filter: Filters.bySource("SETTINGS_CONSENT"),
+        filter: Filters.bySource("SETTINGS_CONSENT", "revoke:"),
         searchDefault: false,
+        map: {
+          fetchConsents: (v) =>
+            bySrc("SETTINGS_CONSENT")(v) && !v.toString().includes("grant:"),
+          updateConsents: (v) =>
+            bySrc("SETTINGS_CONSENT")(v) && v.toString().includes("grant:"),
+        },
       },
       HTTPModule: { filter: Filters.byKeys("Request", "post", "get", "del") },
       _tzRaw: {
@@ -144,6 +146,7 @@ module.exports = class Incognito {
     return {
       ...rest,
       ActivityTrackingStore: Stores.ActivityTrackingStore,
+      AnalyticsTrackingStore: Stores.AnalyticsTrackingStore,
       IdleStore: Stores.IdleStore,
       ConsentStore: Stores.ConsentStore,
       DebugOptionsStore:
@@ -254,7 +257,7 @@ module.exports = class Incognito {
   retryFailed() {
     const featureModules = {
       blockTelemetry: () =>
-        this.modules.Analytics && this.modules.DebugOptionsStore,
+        this.modules.Analytics?.default && this.modules.DebugOptionsStore,
       blockUsageProfiling: () => this.modules.Type2Manager?.updateAsync,
       blockErrorReporting: () =>
         window.DiscordSentry?.getClient?.() || this.modules.CrashReporter,
@@ -310,33 +313,19 @@ module.exports = class Incognito {
     const { Analytics } = this.modules;
     let failed = [];
 
-    if (!Analytics) {
+    if (!Analytics?.default) {
       failed.push("events");
     } else {
-      if (Analytics.default?.track) {
-        patcher.instead(Analytics.default, "track", () => {
-          this.incrementStat("telemetryBlocked");
-          return Promise.resolve();
-        });
-      } else {
-        failed.push("events");
-      }
+      patcher.instead(Analytics.default, "track", () => {
+        this.incrementStat("telemetryBlocked");
+        return Promise.resolve();
+      });
 
-      const methods = [
-        [
-          "trackNetworkAction",
-          (s) => /type:\s*["']action["']/.test(s),
-          "network",
-        ],
-        [
-          "debugLogEvent",
-          (s) => s.includes("AnalyticsUtils.track"),
-          "debug logs",
-        ],
-      ];
-      for (const [name, match, label] of methods) {
-        const key = Incognito.getExportKey(Analytics, name, match);
-        if (key) {
+      for (const [key, label] of [
+        ["trackNetworkAction", "network"],
+        ["debugLogEvent", "debug logs"],
+      ]) {
+        if (typeof Analytics[key] === "function") {
           patcher.instead(Analytics, key, () => {});
         } else {
           failed.push(label);
@@ -413,21 +402,37 @@ module.exports = class Incognito {
       failed.push("telemetry endpoints");
     }
 
-    if (typeof window.fetch === "function") {
-      patcher.instead(window, "fetch", (thisObj, args, original) => {
-        const [input, init] = args;
-        const url =
-          typeof input === "string" ? input : (input?.href ?? input?.url);
-        const method = (init?.method ?? input?.method ?? "GET").toUpperCase();
-        if (method === "POST" && isTelemetryUrl(url)) {
-          this.incrementStat("telemetryBlocked");
-          return Promise.resolve(Response.json({}));
-        }
-        return original.apply(thisObj ?? window, args);
+    const { SuperProperties, AnalyticsTrackingStore, Dispatcher } =
+      this.modules;
+    const handlers = SuperProperties?.AnalyticsActionHandlers;
+    if (handlers?.handleTrack) {
+      patcher.instead(handlers, "handleTrack", (_, [action]) => {
+        action?.resolve?.();
+        this.incrementStat("telemetryBlocked");
+        return false;
       });
     }
+    if (handlers?.handleConnectionOpen) {
+      patcher.after(handlers, "handleConnectionOpen", () => {
+        AnalyticsTrackingStore?.requestDrain?.();
+      });
+    }
+    if (AnalyticsTrackingStore?.submitEventsImmediately) {
+      patcher.instead(
+        AnalyticsTrackingStore,
+        "submitEventsImmediately",
+        () => {
+          this.incrementStat("telemetryBlocked");
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            body: {},
+            headers: {},
+          });
+        },
+      );
+    }
 
-    const { Dispatcher } = this.modules;
     if (Dispatcher?.dispatch) {
       patcher.before(Dispatcher, "dispatch", (_, [action]) => {
         if (action.type === "TRACK") {
@@ -441,28 +446,20 @@ module.exports = class Incognito {
     this.handleFailure("blockTelemetry", failed);
     if (failed.length) return;
 
+    AnalyticsTrackingStore?.requestDrain?.();
+
     if (
       !ConsentStore?.receivedConsentsInConnectionOpen ||
       ConsentStore.consents?.usage_statistics?.consented
     ) {
-      const fetchKey = Incognito.getExportKey(
-        ConsentModule,
-        "fetchConsents",
-        (s) => s.includes("SETTINGS_CONSENT") && !s.includes("grant:"),
-      );
-      const updateKey = Incognito.getExportKey(
-        ConsentModule,
-        "updateConsents",
-        (s) => s.includes("SETTINGS_CONSENT") && s.includes("grant:"),
-      );
-      if (fetchKey && updateKey) {
-        ConsentModule[fetchKey]()
+      if (ConsentModule?.fetchConsents && ConsentModule?.updateConsents) {
+        ConsentModule.fetchConsents()
           .then((consents) => {
             if (
               this.patchers.blockTelemetry &&
               consents?.usage_statistics?.consented
             ) {
-              return ConsentModule[updateKey]([], ["usage_statistics"]);
+              return ConsentModule.updateConsents([], ["usage_statistics"]);
             }
           })
           .catch(() => {});
